@@ -1,0 +1,57 @@
+site_name: MACP Python SDK
+site_description: Python SDK for the Multi-Agent Coordination Protocol
+repo_url: https://github.com/multiagentcoordinationprotocol/python-sdk
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Overview: index.md
+  - Protocol:
+      - Core Concepts: protocol.md
+      - Determinism & Replay: determinism.md
+      - Security: security.md
+  - Architecture: architecture.md
+  - Modes:
+      - Decision: modes/decision.md
+      - Proposal: modes/proposal.md
+      - Task: modes/task.md
+      - Handoff: modes/handoff.md
+      - Quorum: modes/quorum.md
+  - Guides:
+      - Error Handling & Retry: guides/error-handling.md
+      - Streaming: guides/streaming.md
+      - Building Orchestrators: guides/building-orchestrators.md
+  - Auth: auth.md
+  - API Reference: api/index.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
