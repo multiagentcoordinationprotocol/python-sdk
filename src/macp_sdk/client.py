@@ -118,7 +118,7 @@ class MacpClient:
     def __enter__(self) -> MacpClient:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
 
     def _metadata(self, auth: AuthConfig | None = None) -> Sequence[tuple[str, str]]:

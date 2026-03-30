@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from macp.modes.decision.v1 import decision_pb2
 
 from .auth import AuthConfig
@@ -38,7 +40,7 @@ class DecisionSession(BaseSession):
         supporting_data: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = decision_pb2.ProposalPayload(
             proposal_id=proposal_id,
             option=option,
@@ -63,7 +65,7 @@ class DecisionSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = decision_pb2.EvaluationPayload(
             proposal_id=proposal_id,
             recommendation=recommendation,
@@ -87,7 +89,7 @@ class DecisionSession(BaseSession):
         severity: str = "medium",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = decision_pb2.ObjectionPayload(
             proposal_id=proposal_id,
             reason=reason,
@@ -110,7 +112,7 @@ class DecisionSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = decision_pb2.VotePayload(
             proposal_id=proposal_id,
             vote=vote,

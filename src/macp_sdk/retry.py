@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-
-from macp.v1 import envelope_pb2
+from typing import Any
 
 from ._logging import logger
 from .auth import AuthConfig
@@ -26,12 +25,12 @@ class RetryPolicy:
 
 
 def retry_send(
-    client: object,
-    envelope: envelope_pb2.Envelope,
+    client: Any,
+    envelope: Any,
     *,
     policy: RetryPolicy | None = None,
     auth: AuthConfig | None = None,
-) -> object:
+) -> Any:
     """Send an envelope with retries on transient failures.
 
     Uses the client's ``send`` method. On ``MacpTransportError`` or retryable
@@ -44,7 +43,7 @@ def retry_send(
 
     for attempt in range(1 + pol.max_retries):
         try:
-            return client.send(envelope, auth=auth)  # type: ignore[union-attr]
+            return client.send(envelope, auth=auth)
         except MacpTransportError as exc:
             last_error = exc
         except MacpAckError as exc:

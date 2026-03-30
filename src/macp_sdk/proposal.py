@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from macp.modes.proposal.v1 import proposal_pb2
 from macp.v1 import envelope_pb2
@@ -166,7 +167,7 @@ class ProposalSession(BaseSession):
         tags: list[str] | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = proposal_pb2.ProposalPayload(
             proposal_id=proposal_id,
             title=title,
@@ -193,7 +194,7 @@ class ProposalSession(BaseSession):
         details: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = proposal_pb2.CounterProposalPayload(
             proposal_id=proposal_id,
             supersedes_proposal_id=supersedes_proposal_id,
@@ -217,7 +218,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = proposal_pb2.AcceptPayload(
             proposal_id=proposal_id,
             reason=reason,
@@ -239,7 +240,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = proposal_pb2.RejectPayload(
             proposal_id=proposal_id,
             terminal=terminal,
@@ -261,7 +262,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = proposal_pb2.WithdrawPayload(
             proposal_id=proposal_id,
             reason=reason,

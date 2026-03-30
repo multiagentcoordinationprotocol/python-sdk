@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from macp.modes.task.v1 import task_pb2
 from macp.v1 import envelope_pb2
@@ -192,7 +193,7 @@ class TaskSession(BaseSession):
         deadline_unix_ms: int = 0,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskRequestPayload(
             task_id=task_id,
             title=title,
@@ -218,7 +219,7 @@ class TaskSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskAcceptPayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender),
@@ -241,7 +242,7 @@ class TaskSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskRejectPayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender),
@@ -266,7 +267,7 @@ class TaskSession(BaseSession):
         partial_output: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskUpdatePayload(
             task_id=task_id,
             status=status,
@@ -292,7 +293,7 @@ class TaskSession(BaseSession):
         summary: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskCompletePayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender),
@@ -318,7 +319,7 @@ class TaskSession(BaseSession):
         retryable: bool = False,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = task_pb2.TaskFailPayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender),

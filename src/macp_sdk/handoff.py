@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from macp.modes.handoff.v1 import handoff_pb2
 from macp.v1 import envelope_pb2
@@ -140,7 +141,7 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = handoff_pb2.HandoffOfferPayload(
             handoff_id=handoff_id,
             target_participant=target_participant,
@@ -164,7 +165,7 @@ class HandoffSession(BaseSession):
         context: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = handoff_pb2.HandoffContextPayload(
             handoff_id=handoff_id,
             content_type=content_type,
@@ -187,7 +188,7 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = handoff_pb2.HandoffAcceptPayload(
             handoff_id=handoff_id,
             accepted_by=accepted_by or self._sender_for(sender),
@@ -210,7 +211,7 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = handoff_pb2.HandoffDeclinePayload(
             handoff_id=handoff_id,
             declined_by=declined_by or self._sender_for(sender),

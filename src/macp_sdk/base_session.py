@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
-from typing import ClassVar
-
-from macp.v1 import envelope_pb2
+from collections.abc import Iterable, Mapping
+from typing import Any, ClassVar
 
 from ._logging import logger
 from .auth import AuthConfig
@@ -60,14 +58,14 @@ class BaseSession(ABC):
         if sender:
             return sender
         auth_cfg = self.auth or self.client.auth
-        return auth_cfg.sender if auth_cfg else ""
+        return auth_cfg.sender or "" if auth_cfg else ""
 
     def _send_and_track(
         self,
-        envelope: envelope_pb2.Envelope,
+        envelope: Any,
         *,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         logger.debug(
             "send session=%s type=%s sender=%s",
             envelope.session_id,
@@ -93,9 +91,9 @@ class BaseSession(ABC):
         participants: list[str],
         ttl_ms: int,
         context: bytes | str | Mapping[str, object] | None = None,
-        roots: object = None,
+        roots: Iterable[Any] | None = None,
         sender: str | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         """Send SessionStart and begin tracking via the projection."""
         payload = build_session_start_payload(
             intent=intent,
@@ -125,7 +123,7 @@ class BaseSession(ABC):
         commitment_id: str | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         """Send Commitment to resolve the session."""
         payload = build_commitment_payload(
             action=action,
@@ -145,11 +143,11 @@ class BaseSession(ABC):
         )
         return self._send_and_track(envelope, auth=auth)
 
-    def metadata(self, *, auth: AuthConfig | None = None):  # noqa: ANN201
+    def metadata(self, *, auth: AuthConfig | None = None) -> Any:
         """Query session metadata from the runtime."""
         return self.client.get_session(self.session_id, auth=auth or self.auth)
 
-    def cancel(self, *, reason: str = "", auth: AuthConfig | None = None):  # noqa: ANN201
+    def cancel(self, *, reason: str = "", auth: AuthConfig | None = None) -> Any:
         """Cancel the session."""
         return self.client.cancel_session(self.session_id, reason=reason, auth=auth or self.auth)
 

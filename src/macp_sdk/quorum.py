@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from macp.modes.quorum.v1 import quorum_pb2
 from macp.v1 import envelope_pb2
@@ -153,7 +154,7 @@ class QuorumSession(BaseSession):
         required_approvals: int,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = quorum_pb2.ApprovalRequestPayload(
             request_id=request_id,
             action=action,
@@ -177,7 +178,7 @@ class QuorumSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = quorum_pb2.ApprovePayload(
             request_id=request_id,
             reason=reason,
@@ -198,7 +199,7 @@ class QuorumSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = quorum_pb2.RejectPayload(
             request_id=request_id,
             reason=reason,
@@ -219,7 +220,7 @@ class QuorumSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ):  # noqa: ANN201
+    ) -> Any:
         payload = quorum_pb2.AbstainPayload(
             request_id=request_id,
             reason=reason,
