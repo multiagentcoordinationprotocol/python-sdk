@@ -104,6 +104,11 @@ class MACPRuntimeServiceStub(object):
                 request_serializer=macp_dot_v1_dot_core__pb2.PromoteModeRequest.SerializeToString,
                 response_deserializer=macp_dot_v1_dot_core__pb2.PromoteModeResponse.FromString,
                 _registered_method=True)
+        self.WatchSignals = channel.unary_stream(
+                '/macp.v1.MACPRuntimeService/WatchSignals',
+                request_serializer=macp_dot_v1_dot_core__pb2.WatchSignalsRequest.SerializeToString,
+                response_deserializer=macp_dot_v1_dot_core__pb2.WatchSignalsResponse.FromString,
+                _registered_method=True)
 
 
 class MACPRuntimeServiceServicer(object):
@@ -194,6 +199,13 @@ class MACPRuntimeServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchSignals(self, request, context):
+        """Ambient signal observation
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_MACPRuntimeServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -266,6 +278,11 @@ def add_MACPRuntimeServiceServicer_to_server(servicer, server):
                     servicer.PromoteMode,
                     request_deserializer=macp_dot_v1_dot_core__pb2.PromoteModeRequest.FromString,
                     response_serializer=macp_dot_v1_dot_core__pb2.PromoteModeResponse.SerializeToString,
+            ),
+            'WatchSignals': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchSignals,
+                    request_deserializer=macp_dot_v1_dot_core__pb2.WatchSignalsRequest.FromString,
+                    response_serializer=macp_dot_v1_dot_core__pb2.WatchSignalsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -646,6 +663,33 @@ class MACPRuntimeService(object):
             '/macp.v1.MACPRuntimeService/PromoteMode',
             macp_dot_v1_dot_core__pb2.PromoteModeRequest.SerializeToString,
             macp_dot_v1_dot_core__pb2.PromoteModeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchSignals(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/macp.v1.MACPRuntimeService/WatchSignals',
+            macp_dot_v1_dot_core__pb2.WatchSignalsRequest.SerializeToString,
+            macp_dot_v1_dot_core__pb2.WatchSignalsResponse.FromString,
             options,
             channel_credentials,
             insecure,

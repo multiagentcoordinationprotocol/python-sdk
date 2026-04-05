@@ -3,8 +3,10 @@ from __future__ import annotations
 from macp_sdk.envelope import (
     build_commitment_payload,
     build_envelope,
+    build_progress_payload,
     build_root,
     build_session_start_payload,
+    build_signal_payload,
     encode_context,
     new_commitment_id,
     new_message_id,
@@ -87,6 +89,49 @@ class TestBuildEnvelope:
         assert env.sender == "alice"
         assert env.message_id  # auto-generated
         assert env.timestamp_unix_ms > 0
+
+
+class TestBuildSignalPayload:
+    def test_basic(self):
+        payload = build_signal_payload(signal_type="observation.latency", confidence=0.95)
+        assert payload.signal_type == "observation.latency"
+        assert payload.confidence == 0.95
+        assert payload.data == b""
+        assert payload.correlation_session_id == ""
+
+    def test_with_data_and_correlation(self):
+        payload = build_signal_payload(
+            signal_type="alert.cpu",
+            data=b"\x01\x02\x03",
+            confidence=0.8,
+            correlation_session_id="session-123",
+        )
+        assert payload.data == b"\x01\x02\x03"
+        assert payload.correlation_session_id == "session-123"
+
+
+class TestBuildProgressPayload:
+    def test_basic(self):
+        payload = build_progress_payload(
+            progress_token="tok-1",
+            progress=5.0,
+            total=10.0,
+        )
+        assert payload.progress_token == "tok-1"
+        assert payload.progress == 5.0
+        assert payload.total == 10.0
+        assert payload.message == ""
+
+    def test_with_message_and_target(self):
+        payload = build_progress_payload(
+            progress_token="tok-2",
+            progress=3.0,
+            total=8.0,
+            message="processing batch",
+            target_message_id="msg-abc",
+        )
+        assert payload.message == "processing batch"
+        assert payload.target_message_id == "msg-abc"
 
 
 class TestSerializeMessage:

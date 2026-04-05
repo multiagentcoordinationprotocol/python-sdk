@@ -89,6 +89,38 @@ def build_commitment_payload(
     )
 
 
+def build_signal_payload(
+    *,
+    signal_type: str,
+    data: bytes = b"",
+    confidence: float = 0.0,
+    correlation_session_id: str = "",
+) -> core_pb2.SignalPayload:
+    return core_pb2.SignalPayload(
+        signal_type=signal_type,
+        data=data,
+        confidence=confidence,
+        correlation_session_id=correlation_session_id,
+    )
+
+
+def build_progress_payload(
+    *,
+    progress_token: str,
+    progress: float,
+    total: float,
+    message: str = "",
+    target_message_id: str = "",
+) -> core_pb2.ProgressPayload:
+    return core_pb2.ProgressPayload(
+        progress_token=progress_token,
+        progress=progress,
+        total=total,
+        message=message,
+        target_message_id=target_message_id,
+    )
+
+
 def serialize_message(message: object) -> bytes:
     serializer = getattr(message, "SerializeToString", None)
     if serializer is None:

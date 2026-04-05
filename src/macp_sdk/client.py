@@ -10,6 +10,12 @@ from macp.v1 import core_pb2, core_pb2_grpc, envelope_pb2
 
 from ._logging import logger
 from .auth import AuthConfig
+from .envelope import (
+    build_envelope,
+    build_progress_payload,
+    build_signal_payload,
+    serialize_message,
+)
 from .errors import AckFailure, MacpAckError, MacpSdkError, MacpTransportError
 
 
@@ -316,3 +322,77 @@ class MacpClient:
             yield from call
         except grpc.RpcError as exc:
             raise MacpTransportError(str(exc)) from exc
+
+    def watch_signals(
+        self, *, timeout: float | None = None
+    ) -> Iterator[core_pb2.WatchSignalsResponse]:
+        """Server-streaming RPC: yields ambient signal envelopes."""
+        logger.debug("watch_signals starting")
+        call = self.stub.WatchSignals(
+            core_pb2.WatchSignalsRequest(),
+            timeout=timeout or self.default_timeout,
+        )
+        try:
+            yield from call
+        except grpc.RpcError as exc:
+            raise MacpTransportError(str(exc)) from exc
+
+    def send_signal(
+        self,
+        *,
+        signal_type: str,
+        data: bytes = b"",
+        confidence: float = 0.0,
+        correlation_session_id: str = "",
+        sender: str = "",
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> envelope_pb2.Ack:
+        """Send an ambient (non-session) signal to the runtime."""
+        auth_cfg = self._require_auth(auth)
+        payload = build_signal_payload(
+            signal_type=signal_type,
+            data=data,
+            confidence=confidence,
+            correlation_session_id=correlation_session_id,
+        )
+        envelope = build_envelope(
+            mode="",
+            message_type="Signal",
+            session_id="",
+            payload=serialize_message(payload),
+            sender=sender or auth_cfg.sender or "",
+        )
+        return self.send(envelope, auth=auth_cfg, timeout=timeout)
+
+    def send_progress(
+        self,
+        *,
+        session_id: str,
+        mode: str,
+        progress_token: str,
+        progress: float,
+        total: float,
+        message: str = "",
+        target_message_id: str = "",
+        sender: str = "",
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> envelope_pb2.Ack:
+        """Send a non-binding progress update within a session."""
+        auth_cfg = self._require_auth(auth)
+        payload = build_progress_payload(
+            progress_token=progress_token,
+            progress=progress,
+            total=total,
+            message=message,
+            target_message_id=target_message_id,
+        )
+        envelope = build_envelope(
+            mode=mode,
+            message_type="Progress",
+            session_id=session_id,
+            payload=serialize_message(payload),
+            sender=sender or auth_cfg.sender or "",
+        )
+        return self.send(envelope, auth=auth_cfg, timeout=timeout)
