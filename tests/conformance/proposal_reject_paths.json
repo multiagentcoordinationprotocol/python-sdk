@@ -1,0 +1,48 @@
+{
+  "mode": "macp.mode.proposal.v1",
+  "initiator": "agent://buyer",
+  "participants": [
+    "agent://buyer",
+    "agent://seller"
+  ],
+  "mode_version": "1.0.0",
+  "configuration_version": "cfg-1",
+  "policy_version": "policy-1",
+  "ttl_ms": 60000,
+  "messages": [
+    {
+      "sender": "agent://buyer",
+      "message_type": "Commitment",
+      "payload_type": "Commitment",
+      "payload": {
+        "commitment_id": "c1",
+        "action": "proposal.accepted",
+        "authority_scope": "test",
+        "reason": "done",
+        "mode_version": "1.0.0",
+        "policy_version": "policy-1",
+        "configuration_version": "cfg-1"
+      },
+      "expect": "reject",
+      "expected_error_code": "INVALID_ENVELOPE"
+    },
+    {
+      "sender": "agent://seller",
+      "message_type": "CounterProposal",
+      "payload_type": "proposal.CounterProposal",
+      "payload": {
+        "proposal_id": "p2",
+        "supersedes_proposal_id": "",
+        "title": "counter",
+        "summary": "missing supersedes"
+      },
+      "expect": "reject",
+      "expected_error_code": "INVALID_ENVELOPE"
+    }
+  ],
+  "expected_final_state": "Open",
+  "expect_resolution_present": false,
+  "expected_mode_state": {
+    "phase": "Negotiating"
+  }
+}
