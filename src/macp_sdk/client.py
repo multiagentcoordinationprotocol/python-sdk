@@ -5,8 +5,7 @@ import threading
 from collections.abc import Iterator, Sequence
 
 import grpc
-
-from macp.v1 import core_pb2, core_pb2_grpc, envelope_pb2
+from macp.v1 import core_pb2, core_pb2_grpc, envelope_pb2, policy_pb2
 
 from ._logging import logger
 from .auth import AuthConfig
@@ -27,6 +26,9 @@ def _default_capabilities() -> core_pb2.Capabilities:
         manifest=core_pb2.ManifestCapability(get_manifest=True),
         mode_registry=core_pb2.ModeRegistryCapability(list_modes=True, list_changed=True),
         roots=core_pb2.RootsCapability(list_roots=True, list_changed=True),
+        policy_registry=policy_pb2.PolicyRegistryCapability(
+            register_policy=True, list_policies=True, list_changed=True
+        ),
         experimental=core_pb2.ExperimentalCapabilities(features={}),
     )
 
@@ -286,6 +288,82 @@ class MacpClient:
             metadata=self._metadata(auth_cfg),
             timeout=timeout or self.default_timeout,
         )
+
+    # ── Governance policy lifecycle ───────────────────────────────────
+
+    def register_policy(
+        self,
+        descriptor: policy_pb2.PolicyDescriptor,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> policy_pb2.RegisterPolicyResponse:
+        """Register a governance policy with the runtime."""
+        auth_cfg = self._require_auth(auth)
+        return self.stub.RegisterPolicy(
+            policy_pb2.RegisterPolicyRequest(descriptor=descriptor),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+
+    def unregister_policy(
+        self,
+        policy_id: str,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> policy_pb2.UnregisterPolicyResponse:
+        """Unregister a governance policy from the runtime."""
+        auth_cfg = self._require_auth(auth)
+        return self.stub.UnregisterPolicy(
+            policy_pb2.UnregisterPolicyRequest(policy_id=policy_id),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+
+    def get_policy(
+        self,
+        policy_id: str,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> policy_pb2.GetPolicyResponse:
+        """Retrieve a single governance policy by ID."""
+        auth_cfg = self._require_auth(auth)
+        return self.stub.GetPolicy(
+            policy_pb2.GetPolicyRequest(policy_id=policy_id),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+
+    def list_policies(
+        self,
+        mode: str | None = None,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> policy_pb2.ListPoliciesResponse:
+        """List registered governance policies, optionally filtered by mode."""
+        auth_cfg = self._require_auth(auth)
+        return self.stub.ListPolicies(
+            policy_pb2.ListPoliciesRequest(mode=mode or ""),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+
+    def watch_policies(
+        self, *, timeout: float | None = None
+    ) -> Iterator[policy_pb2.WatchPoliciesResponse]:
+        """Server-streaming RPC: yields governance policy change events."""
+        logger.debug("watch_policies starting")
+        call = self.stub.WatchPolicies(
+            policy_pb2.WatchPoliciesRequest(),
+            timeout=timeout or self.default_timeout,
+        )
+        try:
+            yield from call
+        except grpc.RpcError as exc:
+            raise MacpTransportError(str(exc)) from exc
 
     def open_stream(
         self, *, auth: AuthConfig | None = None, timeout: float | None = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.task.v1 import task_pb2
+
 from macp_sdk.constants import MODE_TASK
 from macp_sdk.task import TaskProjection
 from tests.conftest import make_envelope

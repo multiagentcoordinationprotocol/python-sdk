@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.handoff.v1 import handoff_pb2
+
 from macp_sdk.constants import MODE_HANDOFF
 from macp_sdk.handoff import HandoffProjection
 from tests.conftest import make_envelope

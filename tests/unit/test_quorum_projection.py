@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.quorum.v1 import quorum_pb2
+
 from macp_sdk.constants import MODE_QUORUM
 from macp_sdk.quorum import QuorumProjection
 from tests.conftest import make_envelope

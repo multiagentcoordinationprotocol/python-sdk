@@ -12,13 +12,13 @@ import json
 from pathlib import Path
 
 import pytest
-
 from macp.modes.decision.v1 import decision_pb2
 from macp.modes.handoff.v1 import handoff_pb2
 from macp.modes.proposal.v1 import proposal_pb2
 from macp.modes.quorum.v1 import quorum_pb2
 from macp.modes.task.v1 import task_pb2
 from macp.v1 import core_pb2, envelope_pb2
+
 from macp_sdk.envelope import new_message_id, now_unix_ms, serialize_message
 from macp_sdk.handoff import HandoffProjection
 from macp_sdk.projections import DecisionProjection

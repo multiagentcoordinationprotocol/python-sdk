@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from macp.modes.decision.v1 import decision_pb2
 from macp.v1 import core_pb2
+
 from macp_sdk.constants import MODE_DECISION
 from macp_sdk.projections import DecisionProjection
 from tests.conftest import make_envelope

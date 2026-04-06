@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.proposal.v1 import proposal_pb2
+
 from macp_sdk.constants import MODE_PROPOSAL
 from macp_sdk.proposal import ProposalProjection
 from tests.conftest import make_envelope
