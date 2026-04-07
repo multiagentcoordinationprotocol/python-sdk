@@ -11,6 +11,7 @@ from .base_projection import BaseProjection
 from .base_session import BaseSession
 from .constants import MODE_PROPOSAL
 from .envelope import build_envelope, serialize_message
+from .errors import MacpSessionError
 
 # ---------------------------------------------------------------------------
 # Projection records
@@ -25,6 +26,14 @@ class ProposalRecord:
     proposer: str
     supersedes: str  # "" if original
     disposition: str  # "live" | "withdrawn"
+
+
+@dataclass(slots=True)
+class RejectRecord:
+    proposal_id: str
+    reason: str
+    sender: str
+    terminal: bool
 
 
 @dataclass(slots=True)
@@ -56,6 +65,7 @@ class ProposalProjection(BaseProjection):
         self.phase = "Negotiating"
         self.proposals: dict[str, ProposalRecord] = {}
         self.accepts: dict[str, AcceptRecord] = {}  # sender -> latest accept
+        self.rejections: list[RejectRecord] = []
         self.terminal_rejections: list[TerminalRejectRecord] = []
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
@@ -77,9 +87,7 @@ class ProposalProjection(BaseProjection):
         if mt == "CounterProposal":
             p = proposal_pb2.CounterProposalPayload()
             p.ParseFromString(envelope.payload)
-            # Mark the superseded proposal as withdrawn
-            if p.supersedes_proposal_id in self.proposals:
-                self.proposals[p.supersedes_proposal_id].disposition = "withdrawn"
+            # Counter-proposal does NOT retire the original — both stay live.
             self.proposals[p.proposal_id] = ProposalRecord(
                 proposal_id=p.proposal_id,
                 title=p.title,
@@ -103,6 +111,14 @@ class ProposalProjection(BaseProjection):
         if mt == "Reject":
             p = proposal_pb2.RejectPayload()
             p.ParseFromString(envelope.payload)
+            self.rejections.append(
+                RejectRecord(
+                    proposal_id=p.proposal_id,
+                    reason=p.reason,
+                    sender=envelope.sender,
+                    terminal=p.terminal,
+                )
+            )
             if p.terminal:
                 self.terminal_rejections.append(
                     TerminalRejectRecord(
@@ -263,6 +279,8 @@ class ProposalSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> Any:
+        if not proposal_id or not proposal_id.strip():
+            raise MacpSessionError("proposal_id must be non-empty for withdraw")
         payload = proposal_pb2.WithdrawPayload(
             proposal_id=proposal_id,
             reason=reason,

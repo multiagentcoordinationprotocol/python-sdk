@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+# ── Well-known error codes ───────────────────────────────────────────
+
+SESSION_ALREADY_EXISTS = "SESSION_ALREADY_EXISTS"
+POLICY_DENIED = "POLICY_DENIED"
+UNKNOWN_POLICY_VERSION = "UNKNOWN_POLICY_VERSION"
+INVALID_POLICY_DEFINITION = "INVALID_POLICY_DEFINITION"
 
 
 class MacpSdkError(Exception):
@@ -13,6 +20,7 @@ class AckFailure:
     message: str
     session_id: str = ""
     message_id: str = ""
+    reasons: list[str] = field(default_factory=list)
 
 
 class MacpAckError(MacpSdkError):
@@ -30,6 +38,11 @@ class MacpAckError(MacpSdkError):
         self.message_type = message_type
         super().__init__(f"{failure.code}: {failure.message}")
 
+    @property
+    def reasons(self) -> list[str]:
+        """Structured denial reasons (populated for POLICY_DENIED)."""
+        return self.failure.reasons
+
     def __repr__(self) -> str:
         parts = [f"code={self.failure.code!r}", f"message={self.failure.message!r}"]
         if self.failure.session_id:
@@ -38,6 +51,8 @@ class MacpAckError(MacpSdkError):
             parts.append(f"mode={self.mode!r}")
         if self.message_type:
             parts.append(f"message_type={self.message_type!r}")
+        if self.failure.reasons:
+            parts.append(f"reasons={self.failure.reasons!r}")
         return f"MacpAckError({', '.join(parts)})"
 
 

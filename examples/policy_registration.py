@@ -69,30 +69,31 @@ def main() -> None:
             client,
             policy_version="policy.deploy.majority-veto",
         )
+        # Initiator must be in participants to propose
         session.start(
             intent="approve production deployment v2.1",
-            participants=["alice", "bob"],
+            participants=["coordinator", "alice", "bob"],
             ttl_ms=60_000,
         )
         session.propose("p1", "deploy-v2.1", rationale="canary checks passed")
 
         # Evaluations (required before voting by policy)
         session.evaluate(
-            "p1", "approve", confidence=0.95, reason="risk low",
+            "p1", "APPROVE", confidence=0.95, reason="risk low",
             sender="alice", auth=AuthConfig.for_dev_agent("alice"),
         )
         session.evaluate(
-            "p1", "approve", confidence=0.85, reason="tests green",
+            "p1", "APPROVE", confidence=0.85, reason="tests green",
             sender="bob", auth=AuthConfig.for_dev_agent("bob"),
         )
 
         # Votes (quorum of 2 required by policy)
         session.vote(
-            "p1", "approve", reason="ship it",
+            "p1", "APPROVE", reason="ship it",
             sender="alice", auth=AuthConfig.for_dev_agent("alice"),
         )
         session.vote(
-            "p1", "approve", reason="lgtm",
+            "p1", "APPROVE", reason="lgtm",
             sender="bob", auth=AuthConfig.for_dev_agent("bob"),
         )
 

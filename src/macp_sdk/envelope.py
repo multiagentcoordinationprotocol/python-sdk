@@ -13,6 +13,22 @@ from .constants import (
     DEFAULT_POLICY_VERSION,
     MACP_VERSION,
 )
+from .errors import MacpSessionError
+
+# ── Outcome inference ────────────────────────────────────────────────
+
+_NEGATIVE_SUFFIXES = ("rejected", "failed", "declined")
+_POSITIVE_SUFFIXES = ("selected", "accepted", "completed", "approved")
+
+
+def _infer_outcome_positive(action: str) -> bool:
+    """Infer ``outcome_positive`` from the action suffix.
+
+    Actions ending in *rejected*, *failed*, or *declined* are negative.
+    Everything else (including unknown suffixes) defaults to positive.
+    """
+    lower = action.lower()
+    return not any(lower.endswith(s) for s in _NEGATIVE_SUFFIXES)
 
 
 def new_session_id() -> str:
@@ -68,6 +84,11 @@ def build_session_start_payload(
     )
 
 
+def _has_outcome_positive_field() -> bool:
+    """Check if the proto schema supports outcome_positive."""
+    return any(f.name == "outcome_positive" for f in core_pb2.CommitmentPayload.DESCRIPTOR.fields)
+
+
 def build_commitment_payload(
     *,
     action: str,
@@ -77,8 +98,11 @@ def build_commitment_payload(
     mode_version: str = DEFAULT_MODE_VERSION,
     configuration_version: str = DEFAULT_CONFIGURATION_VERSION,
     policy_version: str = DEFAULT_POLICY_VERSION,
+    outcome_positive: bool | None = None,
 ) -> core_pb2.CommitmentPayload:
-    return core_pb2.CommitmentPayload(
+    if outcome_positive is None:
+        outcome_positive = _infer_outcome_positive(action)
+    kwargs: dict[str, object] = dict(
         commitment_id=commitment_id or new_commitment_id(),
         action=action,
         authority_scope=authority_scope,
@@ -87,6 +111,9 @@ def build_commitment_payload(
         configuration_version=configuration_version,
         policy_version=policy_version,
     )
+    if _has_outcome_positive_field():
+        kwargs["outcome_positive"] = outcome_positive
+    return core_pb2.CommitmentPayload(**kwargs)
 
 
 def build_signal_payload(
@@ -96,6 +123,8 @@ def build_signal_payload(
     confidence: float = 0.0,
     correlation_session_id: str = "",
 ) -> core_pb2.SignalPayload:
+    if data and not signal_type.strip():
+        raise MacpSessionError("signal_type must be non-empty when data is present")
     return core_pb2.SignalPayload(
         signal_type=signal_type,
         data=data,

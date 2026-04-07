@@ -232,7 +232,9 @@ class Participant:
         )
 
         transport = self._transport or GrpcTransportAdapter(
-            self._client, self._session_id, auth=self._auth,
+            self._client,
+            self._session_id,
+            auth=self._auth,
         )
         try:
             for message in transport.start():

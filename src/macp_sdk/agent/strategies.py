@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from ..envelope import _infer_outcome_positive
 from .types import HandlerContext, IncomingMessage, MessageHandler, SessionInfo
 
 # ── Evaluation ───────────────────────────────────────────────────────
@@ -24,6 +25,9 @@ class EvaluationStrategy(Protocol):
     def evaluate(self, proposal: dict[str, Any], context: SessionInfo) -> EvaluationResult: ...
 
 
+_VALID_RECOMMENDATIONS = frozenset({"APPROVE", "REVIEW", "BLOCK", "REJECT"})
+
+
 def evaluation_handler(strategy: EvaluationStrategy) -> MessageHandler:
     """Create a MessageHandler that evaluates proposals using the given strategy.
 
@@ -34,6 +38,13 @@ def evaluation_handler(strategy: EvaluationStrategy) -> MessageHandler:
 
     def handler(message: IncomingMessage, ctx: HandlerContext) -> None:
         result = strategy.evaluate(message.payload, ctx.session)
+        if result.recommendation.upper() not in _VALID_RECOMMENDATIONS:
+            raise ValueError(
+                f"invalid recommendation {result.recommendation!r}: "
+                "must be one of APPROVE, REVIEW, BLOCK, REJECT"
+            )
+        if not (0.0 <= result.confidence <= 1.0):
+            raise ValueError(f"confidence must be in [0.0, 1.0], got {result.confidence}")
         ctx.log(
             "evaluation: recommendation=%s confidence=%.2f reason=%s",
             result.recommendation,
@@ -55,9 +66,7 @@ def function_evaluator(
         def __init__(self, fn: Callable[[dict[str, Any], SessionInfo], EvaluationResult]) -> None:
             self._fn = fn
 
-        def evaluate(
-            self, proposal: dict[str, Any], context: SessionInfo
-        ) -> EvaluationResult:
+        def evaluate(self, proposal: dict[str, Any], context: SessionInfo) -> EvaluationResult:
             return self._fn(proposal, context)
 
     return _FnEvaluator(fn)
@@ -139,6 +148,7 @@ class CommitmentDecision:
     action: str
     authority_scope: str
     reason: str
+    outcome_positive: bool = True
 
 
 class CommitmentStrategy(Protocol):
@@ -230,8 +240,8 @@ def majority_voter(
         def decide_vote(self, projection: Any) -> VoteDecision:
             winner = projection.majority_winner()
             if winner:
-                return VoteDecision(vote="approve", reason=f"majority winner: {winner}")
-            return VoteDecision(vote="abstain", reason="no majority winner")
+                return VoteDecision(vote="APPROVE", reason=f"majority winner: {winner}")
+            return VoteDecision(vote="ABSTAIN", reason="no majority winner")
 
     return _MajorityVoter(positive_threshold)
 
@@ -274,6 +284,7 @@ def majority_committer(
                 action=self._action,
                 authority_scope=self._scope,
                 reason=f"majority winner: {winner}",
+                outcome_positive=_infer_outcome_positive(self._action),
             )
 
     return _MajorityCommitter(quorum_size, action, authority_scope)

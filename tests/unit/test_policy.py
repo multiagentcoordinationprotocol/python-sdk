@@ -74,9 +74,7 @@ class TestBuildDecisionPolicy:
         desc = build_decision_policy(
             "pol-3",
             "strict vetoes",
-            objection_handling=ObjectionHandlingRules(
-                block_severity_vetoes=True, veto_threshold=2
-            ),
+            objection_handling=ObjectionHandlingRules(block_severity_vetoes=True, veto_threshold=2),
         )
         rules = json.loads(desc.rules)
         assert rules["objection_handling"]["block_severity_vetoes"] is True
@@ -86,9 +84,7 @@ class TestBuildDecisionPolicy:
         desc = build_decision_policy(
             "pol-4",
             "high confidence",
-            evaluation=EvaluationRules(
-                minimum_confidence=0.8, required_before_voting=True
-            ),
+            evaluation=EvaluationRules(minimum_confidence=0.8, required_before_voting=True),
         )
         rules = json.loads(desc.rules)
         assert rules["evaluation"]["minimum_confidence"] == 0.8
@@ -120,15 +116,9 @@ class TestBuildDecisionPolicy:
                 quorum_value=3,
                 weights={"a": 1.0},
             ),
-            objection_handling=ObjectionHandlingRules(
-                block_severity_vetoes=True, veto_threshold=1
-            ),
-            evaluation=EvaluationRules(
-                minimum_confidence=0.9, required_before_voting=True
-            ),
-            commitment=CommitmentRules(
-                authority="any_participant", require_vote_quorum=True
-            ),
+            objection_handling=ObjectionHandlingRules(block_severity_vetoes=True, veto_threshold=1),
+            evaluation=EvaluationRules(minimum_confidence=0.9, required_before_voting=True),
+            commitment=CommitmentRules(authority="any_participant", require_vote_quorum=True),
         )
         rules = json.loads(desc.rules)
         assert rules["voting"]["algorithm"] == "unanimous"
@@ -141,9 +131,7 @@ class TestBuildDecisionPolicy:
         desc = build_decision_policy(
             "pol-rt",
             "roundtrip",
-            voting=VotingRules(
-                algorithm="weighted", weights={"a": 1.0, "b": 2.0}
-            ),
+            voting=VotingRules(algorithm="weighted", weights={"a": 1.0, "b": 2.0}),
         )
         rules_1 = json.loads(desc.rules)
         rules_2 = json.loads(json.dumps(rules_1).encode())
@@ -173,9 +161,7 @@ class TestBuildQuorumPolicy:
             "qp-2",
             "Custom quorum",
             threshold=QuorumThreshold(type="percentage", value=0.75),
-            abstention=AbstentionRules(
-                counts_toward_quorum=True, interpretation="implicit_reject"
-            ),
+            abstention=AbstentionRules(counts_toward_quorum=True, interpretation="implicit_reject"),
             commitment=CommitmentRules(authority="any_participant"),
         )
         rules = json.loads(desc.rules)
@@ -285,9 +271,7 @@ class TestCommitmentRulesShared:
         desc = build_quorum_policy(
             "c-q",
             "test",
-            commitment=CommitmentRules(
-                authority="designated_role", designated_roles=["admin"]
-            ),
+            commitment=CommitmentRules(authority="designated_role", designated_roles=["admin"]),
         )
         rules = json.loads(desc.rules)
         self._assert_commitment(rules, "designated_role", ["admin"])
@@ -296,9 +280,7 @@ class TestCommitmentRulesShared:
         desc = build_proposal_policy(
             "c-p",
             "test",
-            commitment=CommitmentRules(
-                authority="designated_role", designated_roles=["chair"]
-            ),
+            commitment=CommitmentRules(authority="designated_role", designated_roles=["chair"]),
         )
         rules = json.loads(desc.rules)
         self._assert_commitment(rules, "designated_role", ["chair"])
@@ -307,9 +289,7 @@ class TestCommitmentRulesShared:
         desc = build_task_policy(
             "c-t",
             "test",
-            commitment=CommitmentRules(
-                authority="designated_role", designated_roles=["manager"]
-            ),
+            commitment=CommitmentRules(authority="designated_role", designated_roles=["manager"]),
         )
         rules = json.loads(desc.rules)
         self._assert_commitment(rules, "designated_role", ["manager"])
@@ -318,9 +298,7 @@ class TestCommitmentRulesShared:
         desc = build_handoff_policy(
             "c-h",
             "test",
-            commitment=CommitmentRules(
-                authority="designated_role", designated_roles=["oncall"]
-            ),
+            commitment=CommitmentRules(authority="designated_role", designated_roles=["oncall"]),
         )
         rules = json.loads(desc.rules)
         self._assert_commitment(rules, "designated_role", ["oncall"])

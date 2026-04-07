@@ -98,6 +98,11 @@ class HandoffProjection(BaseProjection):
 
     # -- State query helpers --
 
+    @property
+    def has_accepted_offer(self) -> bool:
+        """True if any offer has been accepted."""
+        return any(o.disposition == "accepted" for o in self.offers.values())
+
     def active_offer(self) -> HandoffOfferRecord | None:
         """Return the most recent offer with disposition='offered', or None."""
         for offer in reversed(list(self.offers.values())):

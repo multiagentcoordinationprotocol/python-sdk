@@ -18,6 +18,7 @@ from .constants import (
 )
 from .decision import DecisionSession
 from .envelope import (
+    _infer_outcome_positive,
     build_commitment_payload,
     build_envelope,
     build_progress_payload,
@@ -30,6 +31,10 @@ from .envelope import (
     serialize_message,
 )
 from .errors import (
+    INVALID_POLICY_DEFINITION,
+    POLICY_DENIED,
+    SESSION_ALREADY_EXISTS,
+    UNKNOWN_POLICY_VERSION,
     AckFailure,
     MacpAckError,
     MacpRetryError,
@@ -59,7 +64,7 @@ from .policy import (
     build_task_policy,
 )
 from .projections import DecisionProjection
-from .proposal import ProposalProjection, ProposalSession
+from .proposal import ProposalProjection, ProposalSession, RejectRecord
 from .quorum import QuorumProjection, QuorumSession
 from .retry import RetryPolicy, retry_send
 from .task import TaskProjection, TaskSession
@@ -81,6 +86,7 @@ __all__ = [
     "HandoffAcceptanceRules",
     "HandoffProjection",
     "HandoffSession",
+    "INVALID_POLICY_DEFINITION",
     "MACP_VERSION",
     "MODE_DECISION",
     "MODE_HANDOFF",
@@ -97,20 +103,25 @@ __all__ = [
     "MacpTimeoutError",
     "MacpTransportError",
     "ObjectionHandlingRules",
+    "POLICY_DENIED",
     "ProposalAcceptanceRules",
     "ProposalProjection",
     "ProposalSession",
     "QuorumProjection",
     "QuorumSession",
     "QuorumThreshold",
+    "RejectRecord",
     "RejectionRules",
     "RetryPolicy",
+    "SESSION_ALREADY_EXISTS",
     "STANDARD_MODES",
     "TaskAssignmentRules",
     "TaskCompletionRules",
     "TaskProjection",
     "TaskSession",
+    "UNKNOWN_POLICY_VERSION",
     "VotingRules",
+    "_infer_outcome_positive",
     "build_commitment_payload",
     "build_decision_policy",
     "build_envelope",

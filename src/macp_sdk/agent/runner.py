@@ -5,6 +5,7 @@ import os
 
 from ..auth import AuthConfig
 from ..client import MacpClient
+from ..constants import DEFAULT_POLICY_VERSION
 from .participant import Participant
 
 
@@ -79,5 +80,5 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
         client=client,
         auth=auth,
         participants=participants,
-        policy_version=str(policy_version) if policy_version else None,
+        policy_version=str(policy_version) if policy_version else DEFAULT_POLICY_VERSION,
     )

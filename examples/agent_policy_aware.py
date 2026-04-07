@@ -65,8 +65,8 @@ def should_vote(projection) -> bool:
 def decide_vote(projection) -> VoteDecision:
     """Vote based on the proposals in the projection."""
     if projection.proposals:
-        return VoteDecision(vote="approve", reason="proposal looks good")
-    return VoteDecision(vote="abstain", reason="no proposals to evaluate")
+        return VoteDecision(vote="APPROVE", reason="proposal looks good")
+    return VoteDecision(vote="ABSTAIN", reason="no proposals to evaluate")
 
 
 # ── Demo: simulate events for a policy-aware participant ─────────────

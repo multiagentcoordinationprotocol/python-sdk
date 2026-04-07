@@ -108,9 +108,7 @@ class TestRegisterPolicy:
         mock_stub.RegisterPolicy.return_value = policy_pb2.RegisterPolicyResponse(
             ok=False, error="INVALID_POLICY_DEFINITION"
         )
-        resp = mock_client.register_policy(
-            build_decision_policy("bad-pol", "bad")
-        )
+        resp = mock_client.register_policy(build_decision_policy("bad-pol", "bad"))
         assert resp.ok is False
         assert resp.error == "INVALID_POLICY_DEFINITION"
 
@@ -174,9 +172,7 @@ class TestListPolicies:
 
     def test_list_filtered_by_mode(self, mock_client, mock_stub):
         desc = policy_pb2.PolicyDescriptor(policy_id="pol-d", mode="macp.mode.decision.v1")
-        mock_stub.ListPolicies.return_value = policy_pb2.ListPoliciesResponse(
-            descriptors=[desc]
-        )
+        mock_stub.ListPolicies.return_value = policy_pb2.ListPoliciesResponse(descriptors=[desc])
 
         resp = mock_client.list_policies(mode="macp.mode.decision.v1")
 
