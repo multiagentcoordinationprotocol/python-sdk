@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from ..envelope import _infer_outcome_positive
+from ..envelope import infer_outcome_positive
 from .types import HandlerContext, IncomingMessage, MessageHandler, SessionInfo
 
 # ── Evaluation ───────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ def majority_committer(
                 action=self._action,
                 authority_scope=self._scope,
                 reason=f"majority winner: {winner}",
-                outcome_positive=_infer_outcome_positive(self._action),
+                outcome_positive=infer_outcome_positive(self._action),
             )
 
     return _MajorityCommitter(quorum_size, action, authority_scope)

@@ -2,28 +2,28 @@
 
 from __future__ import annotations
 
-from macp_sdk.envelope import _infer_outcome_positive, build_commitment_payload
+from macp_sdk.envelope import build_commitment_payload, infer_outcome_positive
 
 
 class TestInferOutcomePositive:
     def test_positive_suffixes(self):
-        assert _infer_outcome_positive("deployment.selected") is True
-        assert _infer_outcome_positive("proposal.accepted") is True
-        assert _infer_outcome_positive("task.completed") is True
-        assert _infer_outcome_positive("quorum.approved") is True
+        assert infer_outcome_positive("deployment.selected") is True
+        assert infer_outcome_positive("proposal.accepted") is True
+        assert infer_outcome_positive("task.completed") is True
+        assert infer_outcome_positive("quorum.approved") is True
 
     def test_negative_suffixes(self):
-        assert _infer_outcome_positive("proposal.rejected") is False
-        assert _infer_outcome_positive("task.failed") is False
-        assert _infer_outcome_positive("handoff.declined") is False
+        assert infer_outcome_positive("proposal.rejected") is False
+        assert infer_outcome_positive("task.failed") is False
+        assert infer_outcome_positive("handoff.declined") is False
 
     def test_unknown_suffix_defaults_positive(self):
-        assert _infer_outcome_positive("custom.action") is True
-        assert _infer_outcome_positive("commit") is True
+        assert infer_outcome_positive("custom.action") is True
+        assert infer_outcome_positive("commit") is True
 
     def test_case_insensitive(self):
-        assert _infer_outcome_positive("DEPLOYMENT.REJECTED") is False
-        assert _infer_outcome_positive("TASK.COMPLETED") is True
+        assert infer_outcome_positive("DEPLOYMENT.REJECTED") is False
+        assert infer_outcome_positive("TASK.COMPLETED") is True
 
 
 class TestBuildCommitmentPayloadOutcome:

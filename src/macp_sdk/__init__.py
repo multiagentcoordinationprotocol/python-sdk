@@ -18,13 +18,13 @@ from .constants import (
 )
 from .decision import DecisionSession
 from .envelope import (
-    _infer_outcome_positive,
     build_commitment_payload,
     build_envelope,
     build_progress_payload,
     build_root,
     build_session_start_payload,
     build_signal_payload,
+    infer_outcome_positive,
     new_commitment_id,
     new_message_id,
     new_session_id,
@@ -121,7 +121,7 @@ __all__ = [
     "TaskSession",
     "UNKNOWN_POLICY_VERSION",
     "VotingRules",
-    "_infer_outcome_positive",
+    "infer_outcome_positive",
     "build_commitment_payload",
     "build_decision_policy",
     "build_envelope",

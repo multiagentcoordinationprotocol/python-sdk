@@ -44,7 +44,8 @@ def _parse_grpc_metadata_reasons(rpc_error: grpc.RpcError) -> list[str]:
         metadata = rpc_error.trailing_metadata()
         if not metadata:
             return []
-        for key, value in metadata:
+        for item in metadata:
+            key, value = item.key, item.value
             if key == "macp-error-details-bin":
                 data = value if isinstance(value, bytes) else value.encode("utf-8")
                 parsed = _json.loads(data)

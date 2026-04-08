@@ -21,7 +21,7 @@ _NEGATIVE_SUFFIXES = ("rejected", "failed", "declined")
 _POSITIVE_SUFFIXES = ("selected", "accepted", "completed", "approved")
 
 
-def _infer_outcome_positive(action: str) -> bool:
+def infer_outcome_positive(action: str) -> bool:
     """Infer ``outcome_positive`` from the action suffix.
 
     Actions ending in *rejected*, *failed*, or *declined* are negative.
@@ -101,7 +101,7 @@ def build_commitment_payload(
     outcome_positive: bool | None = None,
 ) -> core_pb2.CommitmentPayload:
     if outcome_positive is None:
-        outcome_positive = _infer_outcome_positive(action)
+        outcome_positive = infer_outcome_positive(action)
     kwargs: dict[str, object] = dict(
         commitment_id=commitment_id or new_commitment_id(),
         action=action,
