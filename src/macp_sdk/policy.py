@@ -50,7 +50,7 @@ class VotingRules:
 class ObjectionHandlingRules:
     """Objection handling configuration for a decision policy."""
 
-    block_severity_vetoes: bool = False
+    critical_severity_vetoes: bool = False
     veto_threshold: int = 1
 
 
@@ -88,7 +88,7 @@ def build_decision_policy(
     rules: dict[str, object] = {
         "voting": voting_section,
         "objection_handling": {
-            "block_severity_vetoes": o.block_severity_vetoes,
+            "critical_severity_vetoes": o.critical_severity_vetoes,
             "veto_threshold": o.veto_threshold,
         },
         "evaluation": {

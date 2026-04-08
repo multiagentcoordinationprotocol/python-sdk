@@ -67,7 +67,6 @@ class DecisionProjection(BaseProjection):
                 rationale=payload.rationale,
                 sender=envelope.sender,
             )
-            self.phase = "Evaluation"
             return
 
         if message_type == "Evaluation":
@@ -82,6 +81,7 @@ class DecisionProjection(BaseProjection):
                     sender=envelope.sender,
                 )
             )
+            self.phase = "Evaluation"
             return
 
         if message_type == "Objection":

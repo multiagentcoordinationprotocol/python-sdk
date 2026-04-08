@@ -41,7 +41,7 @@ class TestBuildDecisionPolicy:
         assert rules["voting"]["quorum"]["value"] == 0
         assert "weights" not in rules["voting"]
         # Objection handling — matches Runtime defaults
-        assert rules["objection_handling"]["block_severity_vetoes"] is False
+        assert rules["objection_handling"]["critical_severity_vetoes"] is False
         assert rules["objection_handling"]["veto_threshold"] == 1
         # Evaluation — matches Runtime defaults
         assert rules["evaluation"]["minimum_confidence"] == 0.0
@@ -74,10 +74,12 @@ class TestBuildDecisionPolicy:
         desc = build_decision_policy(
             "pol-3",
             "strict vetoes",
-            objection_handling=ObjectionHandlingRules(block_severity_vetoes=True, veto_threshold=2),
+            objection_handling=ObjectionHandlingRules(
+                critical_severity_vetoes=True, veto_threshold=2
+            ),
         )
         rules = json.loads(desc.rules)
-        assert rules["objection_handling"]["block_severity_vetoes"] is True
+        assert rules["objection_handling"]["critical_severity_vetoes"] is True
         assert rules["objection_handling"]["veto_threshold"] == 2
 
     def test_custom_evaluation(self):
@@ -116,14 +118,16 @@ class TestBuildDecisionPolicy:
                 quorum_value=3,
                 weights={"a": 1.0},
             ),
-            objection_handling=ObjectionHandlingRules(block_severity_vetoes=True, veto_threshold=1),
+            objection_handling=ObjectionHandlingRules(
+                critical_severity_vetoes=True, veto_threshold=1
+            ),
             evaluation=EvaluationRules(minimum_confidence=0.9, required_before_voting=True),
             commitment=CommitmentRules(authority="any_participant", require_vote_quorum=True),
         )
         rules = json.loads(desc.rules)
         assert rules["voting"]["algorithm"] == "unanimous"
         assert rules["voting"]["weights"]["a"] == 1.0
-        assert rules["objection_handling"]["block_severity_vetoes"] is True
+        assert rules["objection_handling"]["critical_severity_vetoes"] is True
         assert rules["evaluation"]["minimum_confidence"] == 0.9
         assert rules["commitment"]["authority"] == "any_participant"
 

@@ -115,3 +115,57 @@ class TestTaskProjection:
         assert p.is_failed()
         assert not p.is_completed()
         assert p.phase == "Failed"
+
+    def test_active_assignee_reject_clears_assignee(self):
+        """When the active assignee rejects (reassignment policy allowed it),
+        the projection should clear active_assignee and revert phase."""
+        p = self._proj()
+        # Accept first
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskAccept",
+                task_pb2.TaskAcceptPayload(task_id="t1", assignee="worker-a"),
+                sender="worker-a",
+            )
+        )
+        assert p.active_assignee == "worker-a"
+        assert p.phase == "InProgress"
+
+        # Active assignee rejects (runtime allowed it via reassignment policy)
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskReject",
+                task_pb2.TaskRejectPayload(task_id="t1", assignee="worker-a", reason="can't do it"),
+                sender="worker-a",
+            )
+        )
+        assert p.active_assignee is None
+        assert not p.is_accepted()
+        assert p.phase == "Requested"
+        assert len(p.rejections) == 1
+
+    def test_non_assignee_reject_does_not_clear_assignee(self):
+        """Rejection by a non-assignee should not affect active_assignee."""
+        p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskAccept",
+                task_pb2.TaskAcceptPayload(task_id="t1", assignee="worker-a"),
+                sender="worker-a",
+            )
+        )
+        # Different participant rejects
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskReject",
+                task_pb2.TaskRejectPayload(task_id="t1", assignee="worker-b", reason="not me"),
+                sender="worker-b",
+            )
+        )
+        assert p.active_assignee == "worker-a"
+        assert p.is_accepted()
+        assert p.phase == "InProgress"

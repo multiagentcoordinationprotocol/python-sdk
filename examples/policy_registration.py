@@ -39,7 +39,7 @@ def main() -> None:
                 quorum_value=2,
             ),
             objection_handling=ObjectionHandlingRules(
-                block_severity_vetoes=True,
+                critical_severity_vetoes=True,
                 veto_threshold=1,
             ),
             evaluation=EvaluationRules(

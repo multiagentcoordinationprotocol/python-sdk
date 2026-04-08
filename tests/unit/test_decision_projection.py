@@ -19,7 +19,7 @@ class TestDecisionProjection:
         assert p.vote_totals() == {}
         assert p.majority_winner() is None
 
-    def test_proposal_advances_phase(self):
+    def test_proposal_does_not_advance_phase(self):
         p = self._proj()
         env = make_envelope(
             MODE_DECISION,
@@ -28,8 +28,21 @@ class TestDecisionProjection:
         )
         p.apply_envelope(env)
         assert "p1" in p.proposals
-        assert p.phase == "Evaluation"
+        assert p.phase == "Proposal"
         assert len(p.transcript) == 1
+
+    def test_evaluation_advances_phase_to_evaluation(self):
+        p = self._proj()
+        env = make_envelope(
+            MODE_DECISION,
+            "Evaluation",
+            decision_pb2.EvaluationPayload(
+                proposal_id="p1", recommendation="APPROVE", confidence=0.9, reason="ok"
+            ),
+            sender="alice",
+        )
+        p.apply_envelope(env)
+        assert p.phase == "Evaluation"
 
     def test_evaluation_recorded(self):
         p = self._proj()

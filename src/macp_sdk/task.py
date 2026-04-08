@@ -103,13 +103,19 @@ class TaskProjection(BaseProjection):
         if mt == "TaskReject":
             p = task_pb2.TaskRejectPayload()
             p.ParseFromString(envelope.payload)
+            rejecting_sender = p.assignee or envelope.sender
             self.rejections.append(
                 TaskRejectRecord(
                     task_id=p.task_id,
-                    assignee=p.assignee or envelope.sender,
+                    assignee=rejecting_sender,
                     reason=p.reason,
                 )
             )
+            # If the active assignee rejects, clear them (reassignment policy
+            # allowed it — otherwise the runtime would have rejected the message).
+            if self.active_assignee is not None and rejecting_sender == self.active_assignee:
+                self.active_assignee = None
+                self.phase = "Requested"
             return
 
         if mt == "TaskUpdate":
