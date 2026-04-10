@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from typing import Any, ClassVar
@@ -21,19 +20,7 @@ from .envelope import (
     new_session_id,
     serialize_message,
 )
-from .errors import MacpSessionError
-
-_MAX_PARTICIPANTS = 1000
-_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_BASE64URL_RE = re.compile(r"^[A-Za-z0-9_-]{22,}$")
-
-
-def _validate_session_id(sid: str) -> None:
-    """Validate that a session ID matches UUID v4/v7 or base64url (22+ chars)."""
-    if not (_UUID_RE.match(sid) or _BASE64URL_RE.match(sid)):
-        raise MacpSessionError(
-            f"session_id must be UUID v4/v7 or base64url (22+ chars), got: {sid!r}"
-        )
+from .validation import validate_participant_count, validate_session_id
 
 
 class BaseSession(ABC):
@@ -59,7 +46,7 @@ class BaseSession(ABC):
         self.client = client
         self.session_id = session_id or new_session_id()
         if session_id:
-            _validate_session_id(session_id)
+            validate_session_id(session_id)
         self.mode_version = mode_version
         self.configuration_version = configuration_version
         self.policy_version = policy_version
@@ -111,8 +98,7 @@ class BaseSession(ABC):
         sender: str | None = None,
     ) -> Any:
         """Send SessionStart and begin tracking via the projection."""
-        if len(participants) > _MAX_PARTICIPANTS:
-            raise MacpSessionError(f"Maximum {_MAX_PARTICIPANTS} participants per session")
+        validate_participant_count(len(participants))
         payload = build_session_start_payload(
             intent=intent,
             participants=participants,

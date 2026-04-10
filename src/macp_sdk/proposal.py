@@ -25,7 +25,8 @@ class ProposalRecord:
     summary: str
     proposer: str
     supersedes: str  # "" if original
-    disposition: str  # "live" | "withdrawn"
+    status: str  # "open" | "accepted" | "rejected" | "withdrawn"
+    tags: list[str]
 
 
 @dataclass(slots=True)
@@ -34,13 +35,6 @@ class RejectRecord:
     reason: str
     sender: str
     terminal: bool
-
-
-@dataclass(slots=True)
-class TerminalRejectRecord:
-    proposal_id: str
-    reason: str
-    sender: str
 
 
 @dataclass(slots=True)
@@ -64,9 +58,8 @@ class ProposalProjection(BaseProjection):
         super().__init__()
         self.phase = "Negotiating"
         self.proposals: dict[str, ProposalRecord] = {}
-        self.accepts: dict[str, AcceptRecord] = {}  # sender -> latest accept
+        self.accepts: list[AcceptRecord] = []
         self.rejections: list[RejectRecord] = []
-        self.terminal_rejections: list[TerminalRejectRecord] = []
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
         mt = envelope.message_type
@@ -80,32 +73,33 @@ class ProposalProjection(BaseProjection):
                 summary=p.summary,
                 proposer=envelope.sender,
                 supersedes="",
-                disposition="live",
+                status="open",
+                tags=list(p.tags),
             )
             return
 
         if mt == "CounterProposal":
             p = proposal_pb2.CounterProposalPayload()
             p.ParseFromString(envelope.payload)
-            # Counter-proposal does NOT retire the original — both stay live.
             self.proposals[p.proposal_id] = ProposalRecord(
                 proposal_id=p.proposal_id,
                 title=p.title,
                 summary=p.summary,
                 proposer=envelope.sender,
                 supersedes=p.supersedes_proposal_id,
-                disposition="live",
+                status="open",
+                tags=[],
             )
             return
 
         if mt == "Accept":
             p = proposal_pb2.AcceptPayload()
             p.ParseFromString(envelope.payload)
-            self.accepts[envelope.sender] = AcceptRecord(
+            self.accepts.append(AcceptRecord(
                 proposal_id=p.proposal_id,
                 reason=p.reason,
                 sender=envelope.sender,
-            )
+            ))
             return
 
         if mt == "Reject":
@@ -120,39 +114,54 @@ class ProposalProjection(BaseProjection):
                 )
             )
             if p.terminal:
-                self.terminal_rejections.append(
-                    TerminalRejectRecord(
-                        proposal_id=p.proposal_id,
-                        reason=p.reason,
-                        sender=envelope.sender,
-                    )
-                )
+                rec = self.proposals.get(p.proposal_id)
+                if rec is not None:
+                    rec.status = "rejected"
                 self.phase = "TerminalRejected"
             return
 
         if mt == "Withdraw":
             p = proposal_pb2.WithdrawPayload()
             p.ParseFromString(envelope.payload)
-            if p.proposal_id in self.proposals:
-                self.proposals[p.proposal_id].disposition = "withdrawn"
+            rec = self.proposals.get(p.proposal_id)
+            if rec is not None:
+                rec.status = "withdrawn"
 
     # -- State query helpers --
 
     def live_proposals(self) -> dict[str, ProposalRecord]:
         """Return proposals that have not been withdrawn."""
-        return {k: v for k, v in self.proposals.items() if v.disposition == "live"}
+        return {k: v for k, v in self.proposals.items() if v.status != "withdrawn"}
 
     def accepted_proposal(self) -> str | None:
         """Return the proposal_id that all accepting senders agree on, or None."""
         if not self.accepts:
             return None
-        ids = {a.proposal_id for a in self.accepts.values()}
+        ids = {a.proposal_id for a in self.accepts}
         if len(ids) == 1:
             return ids.pop()
         return None
 
     def has_terminal_rejection(self) -> bool:
-        return len(self.terminal_rejections) > 0
+        return any(r.terminal for r in self.rejections)
+
+    def active_proposals(self) -> list[ProposalRecord]:
+        """Return proposals whose status is 'open'."""
+        return [p for p in self.proposals.values() if p.status == "open"]
+
+    def latest_proposal(self) -> ProposalRecord | None:
+        """Return the most recently added proposal, or None."""
+        if not self.proposals:
+            return None
+        return list(self.proposals.values())[-1]
+
+    def is_accepted(self, proposal_id: str) -> bool:
+        """True if any accept record references *proposal_id*."""
+        return any(a.proposal_id == proposal_id for a in self.accepts)
+
+    def is_terminally_rejected(self, proposal_id: str) -> bool:
+        """True if a terminal rejection exists for *proposal_id*."""
+        return any(r.proposal_id == proposal_id and r.terminal for r in self.rejections)
 
 
 # ---------------------------------------------------------------------------

@@ -14,9 +14,9 @@ class TestQuorumProjection:
     def test_initial_state(self):
         p = self._proj()
         assert p.phase == "Pending"
-        assert p.request is None
-        assert p.approval_count() == 0
-        assert not p.is_threshold_reached()
+        assert len(p.requests) == 0
+        assert p.approval_count("r1") == 0
+        assert not p.is_threshold_reached("r1")
 
     def test_approval_request(self):
         p = self._proj()
@@ -33,8 +33,8 @@ class TestQuorumProjection:
                 sender="coordinator",
             )
         )
-        assert p.request is not None
-        assert p.request.required_approvals == 2
+        assert "r1" in p.requests
+        assert p.requests["r1"].required_approvals == 2
         assert p.phase == "Voting"
 
     def test_approve_and_threshold(self):
@@ -57,8 +57,8 @@ class TestQuorumProjection:
                 sender="alice",
             )
         )
-        assert p.approval_count() == 1
-        assert not p.is_threshold_reached()
+        assert p.approval_count("r1") == 1
+        assert not p.is_threshold_reached("r1")
 
         p.apply_envelope(
             make_envelope(
@@ -68,9 +68,9 @@ class TestQuorumProjection:
                 sender="bob",
             )
         )
-        assert p.approval_count() == 2
-        assert p.is_threshold_reached()
-        assert p.commitment_ready(total_eligible=3)
+        assert p.approval_count("r1") == 2
+        assert p.is_threshold_reached("r1")
+        assert p.commitment_ready("r1")
 
     def test_reject_and_abstain(self):
         p = self._proj()
@@ -100,9 +100,9 @@ class TestQuorumProjection:
                 sender="bob",
             )
         )
-        assert p.rejection_count() == 1
-        assert p.abstention_count() == 1
-        assert p.approval_count() == 0
+        assert p.rejection_count("r1") == 1
+        assert p.abstention_count("r1") == 1
+        assert p.approval_count("r1") == 0
 
     def test_threshold_unreachable(self):
         p = self._proj()
@@ -126,8 +126,7 @@ class TestQuorumProjection:
                     sender=sender,
                 )
             )
-        assert p.is_threshold_unreachable(total_eligible=3)
-        assert p.commitment_ready(total_eligible=3)
+        assert p.is_threshold_unreachable("r1", total_eligible=3)
 
     def test_one_sender_one_ballot(self):
         """Latest ballot per sender supersedes previous."""
@@ -159,6 +158,6 @@ class TestQuorumProjection:
                 sender="alice",
             )
         )
-        assert p.approval_count() == 1
-        assert p.rejection_count() == 0
-        assert len(p.ballots) == 1
+        assert p.approval_count("r1") == 1
+        assert p.rejection_count("r1") == 0
+        assert len(p.voted_senders("r1")) == 1

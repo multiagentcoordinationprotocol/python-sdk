@@ -38,7 +38,8 @@ def evaluation_handler(strategy: EvaluationStrategy) -> MessageHandler:
 
     def handler(message: IncomingMessage, ctx: HandlerContext) -> None:
         result = strategy.evaluate(message.payload, ctx.session)
-        if result.recommendation.upper() not in _VALID_RECOMMENDATIONS:
+        recommendation = result.recommendation.upper()
+        if recommendation not in _VALID_RECOMMENDATIONS:
             raise ValueError(
                 f"invalid recommendation {result.recommendation!r}: "
                 "must be one of APPROVE, REVIEW, BLOCK, REJECT"
@@ -47,9 +48,16 @@ def evaluation_handler(strategy: EvaluationStrategy) -> MessageHandler:
             raise ValueError(f"confidence must be in [0.0, 1.0], got {result.confidence}")
         ctx.log(
             "evaluation: recommendation=%s confidence=%.2f reason=%s",
-            result.recommendation,
+            recommendation,
             result.confidence,
             result.reason,
+        )
+        proposal_id = message.proposal_id or message.payload.get("proposal_id", "")
+        ctx.actions.evaluate(
+            proposal_id,
+            recommendation,
+            confidence=result.confidence,
+            reason=result.reason,
         )
 
     return handler
@@ -107,6 +115,12 @@ def voting_handler(strategy: VotingStrategy) -> MessageHandler:
             "vote: vote=%s reason=%s",
             decision.vote,
             decision.reason,
+        )
+        proposal_id = message.proposal_id or message.payload.get("proposal_id", "")
+        ctx.actions.vote(
+            proposal_id,
+            decision.vote,
+            reason=decision.reason,
         )
 
     return handler
@@ -176,6 +190,12 @@ def commitment_handler(strategy: CommitmentStrategy) -> MessageHandler:
             decision.action,
             decision.authority_scope,
             decision.reason,
+        )
+        ctx.actions.commit(
+            decision.action,
+            decision.authority_scope,
+            reason=decision.reason,
+            outcome_positive=decision.outcome_positive,
         )
 
     return handler
@@ -250,7 +270,7 @@ def majority_committer(
     *,
     quorum_size: int = 1,
     action: str = "commit",
-    authority_scope: str = "default",
+    authority_scope: str = "session",
 ) -> CommitmentStrategy:
     """Built-in commitment strategy that commits when a majority winner exists
     and the quorum has been met.
@@ -258,7 +278,7 @@ def majority_committer(
     Args:
         quorum_size: Minimum number of votes before commitment (default ``1``).
         action: The commitment action string (default ``"commit"``).
-        authority_scope: The commitment authority scope (default ``"default"``).
+        authority_scope: The commitment authority scope (default ``"session"``).
     """
 
     class _MajorityCommitter:

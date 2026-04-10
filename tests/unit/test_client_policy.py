@@ -40,7 +40,7 @@ def mock_client(dev_auth: AuthConfig, mock_stub: MagicMock) -> MagicMock:
     # Wire through real methods by calling stub directly
     def register_policy(descriptor, *, auth=None, timeout=None):
         return mock_stub.RegisterPolicy(
-            policy_pb2.RegisterPolicyRequest(descriptor=descriptor),
+            policy_pb2.RegisterPolicyRequest(policy_descriptor=descriptor),
             metadata=client._metadata(dev_auth),
             timeout=timeout or client.default_timeout,
         )
@@ -85,8 +85,8 @@ class TestRegisterPolicy:
         call_args = mock_stub.RegisterPolicy.call_args
         req = call_args[0][0]
         assert isinstance(req, policy_pb2.RegisterPolicyRequest)
-        assert req.descriptor.policy_id == "pol-test"
-        assert req.descriptor.mode == "macp.mode.decision.v1"
+        assert req.policy_descriptor.policy_id == "pol-test"
+        assert req.policy_descriptor.mode == "macp.mode.decision.v1"
 
     def test_register_with_custom_rules(self, mock_client, mock_stub):
         desc = build_decision_policy(
@@ -100,7 +100,7 @@ class TestRegisterPolicy:
         assert resp.ok is True
 
         req = mock_stub.RegisterPolicy.call_args[0][0]
-        rules = json.loads(req.descriptor.rules)
+        rules = json.loads(req.policy_descriptor.rules)
         assert rules["voting"]["algorithm"] == "supermajority"
         assert rules["voting"]["threshold"] == 0.67
 
@@ -140,13 +140,13 @@ class TestGetPolicy:
             schema_version=1,
             rules=json.dumps({"voting": {"algorithm": "majority"}}).encode(),
         )
-        mock_stub.GetPolicy.return_value = policy_pb2.GetPolicyResponse(descriptor=expected)
+        mock_stub.GetPolicy.return_value = policy_pb2.GetPolicyResponse(policy_descriptor=expected)
 
         resp = mock_client.get_policy("pol-get")
 
-        assert resp.descriptor.policy_id == "pol-get"
-        assert resp.descriptor.description == "retrieved policy"
-        rules = json.loads(resp.descriptor.rules)
+        assert resp.policy_descriptor.policy_id == "pol-get"
+        assert resp.policy_descriptor.description == "retrieved policy"
+        rules = json.loads(resp.policy_descriptor.rules)
         assert rules["voting"]["algorithm"] == "majority"
 
         req = mock_stub.GetPolicy.call_args[0][0]
@@ -238,11 +238,11 @@ class TestPolicyRoundTrip:
 
         # Simulate register + get round-trip
         mock_stub.RegisterPolicy.return_value = policy_pb2.RegisterPolicyResponse(ok=True)
-        mock_stub.GetPolicy.return_value = policy_pb2.GetPolicyResponse(descriptor=original)
+        mock_stub.GetPolicy.return_value = policy_pb2.GetPolicyResponse(policy_descriptor=original)
 
         mock_client.register_policy(original)
         resp = mock_client.get_policy("pol-rt")
-        retrieved = resp.descriptor
+        retrieved = resp.policy_descriptor
 
         assert retrieved.policy_id == original.policy_id
         assert retrieved.mode == original.mode

@@ -14,10 +14,10 @@ class TestTaskProjection:
     def test_initial_state(self):
         p = self._proj()
         assert p.phase == "Pending"
-        assert p.task is None
-        assert not p.is_accepted()
-        assert not p.is_completed()
-        assert not p.is_failed()
+        assert len(p.tasks) == 0
+        assert not p.is_accepted("t1")
+        assert not p.is_completed("t1")
+        assert not p.is_failed("t1")
 
     def test_task_request(self):
         p = self._proj()
@@ -34,12 +34,20 @@ class TestTaskProjection:
                 sender="planner",
             )
         )
-        assert p.task is not None
-        assert p.task.task_id == "t1"
+        assert p.get_task("t1") is not None
+        assert p.get_task("t1").task_id == "t1"
         assert p.phase == "Requested"
 
     def test_accept(self):
         p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskRequest",
+                task_pb2.TaskRequestPayload(task_id="t1", title="x"),
+                sender="planner",
+            )
+        )
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
@@ -48,12 +56,19 @@ class TestTaskProjection:
                 sender="worker",
             )
         )
-        assert p.is_accepted()
-        assert p.active_assignee == "worker"
+        assert p.is_accepted("t1")
         assert p.phase == "InProgress"
 
     def test_reject(self):
         p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskRequest",
+                task_pb2.TaskRequestPayload(task_id="t1", title="x"),
+                sender="planner",
+            )
+        )
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
@@ -62,8 +77,7 @@ class TestTaskProjection:
                 sender="worker",
             )
         )
-        assert len(p.rejections) == 1
-        assert not p.is_accepted()
+        assert not p.is_accepted("t1")
 
     def test_update(self):
         p = self._proj()
@@ -85,6 +99,14 @@ class TestTaskProjection:
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
+                "TaskRequest",
+                task_pb2.TaskRequestPayload(task_id="t1", title="x"),
+                sender="planner",
+            )
+        )
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
                 "TaskComplete",
                 task_pb2.TaskCompletePayload(
                     task_id="t1", assignee="worker", summary="done", output=b"result"
@@ -92,12 +114,21 @@ class TestTaskProjection:
                 sender="worker",
             )
         )
-        assert p.is_completed()
-        assert not p.is_failed()
+        assert p.is_completed("t1")
+        assert not p.is_failed("t1")
         assert p.phase == "Completed"
+        assert p.progress_of("t1") == 1.0
 
     def test_fail(self):
         p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_TASK,
+                "TaskRequest",
+                task_pb2.TaskRequestPayload(task_id="t1", title="x"),
+                sender="planner",
+            )
+        )
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
@@ -112,60 +143,28 @@ class TestTaskProjection:
                 sender="worker",
             )
         )
-        assert p.is_failed()
-        assert not p.is_completed()
+        assert p.is_failed("t1")
+        assert not p.is_completed("t1")
+        assert p.is_retryable("t1")
         assert p.phase == "Failed"
 
-    def test_active_assignee_reject_clears_assignee(self):
-        """When the active assignee rejects (reassignment policy allowed it),
-        the projection should clear active_assignee and revert phase."""
-        p = self._proj()
-        # Accept first
-        p.apply_envelope(
-            make_envelope(
-                MODE_TASK,
-                "TaskAccept",
-                task_pb2.TaskAcceptPayload(task_id="t1", assignee="worker-a"),
-                sender="worker-a",
-            )
-        )
-        assert p.active_assignee == "worker-a"
-        assert p.phase == "InProgress"
-
-        # Active assignee rejects (runtime allowed it via reassignment policy)
-        p.apply_envelope(
-            make_envelope(
-                MODE_TASK,
-                "TaskReject",
-                task_pb2.TaskRejectPayload(task_id="t1", assignee="worker-a", reason="can't do it"),
-                sender="worker-a",
-            )
-        )
-        assert p.active_assignee is None
-        assert not p.is_accepted()
-        assert p.phase == "Requested"
-        assert len(p.rejections) == 1
-
-    def test_non_assignee_reject_does_not_clear_assignee(self):
-        """Rejection by a non-assignee should not affect active_assignee."""
+    def test_active_tasks(self):
         p = self._proj()
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
-                "TaskAccept",
-                task_pb2.TaskAcceptPayload(task_id="t1", assignee="worker-a"),
-                sender="worker-a",
+                "TaskRequest",
+                task_pb2.TaskRequestPayload(task_id="t1", title="x"),
+                sender="planner",
             )
         )
-        # Different participant rejects
+        assert len(p.active_tasks()) == 1
         p.apply_envelope(
             make_envelope(
                 MODE_TASK,
-                "TaskReject",
-                task_pb2.TaskRejectPayload(task_id="t1", assignee="worker-b", reason="not me"),
-                sender="worker-b",
+                "TaskComplete",
+                task_pb2.TaskCompletePayload(task_id="t1", assignee="worker"),
+                sender="worker",
             )
         )
-        assert p.active_assignee == "worker-a"
-        assert p.is_accepted()
-        assert p.phase == "InProgress"
+        assert len(p.active_tasks()) == 0

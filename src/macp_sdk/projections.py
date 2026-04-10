@@ -163,6 +163,21 @@ class DecisionProjection(BaseProjection):
         """Return evaluations that are *not* REVIEW (i.e., they affect decisions)."""
         return [e for e in self.evaluations if e.recommendation.upper() != "REVIEW"]
 
+    def vote_ratio(self, proposal_id: str) -> float:
+        """Return the APPROVE vote ratio for *proposal_id*.
+
+        ABSTAIN votes are excluded from the denominator.
+        """
+        sender_votes = self.votes.get(proposal_id)
+        if not sender_votes:
+            return 0.0
+        votes = list(sender_votes.values())
+        non_abstain = [v for v in votes if v.vote.upper() != "ABSTAIN"]
+        if not non_abstain:
+            return 0.0
+        approvals = sum(1 for v in non_abstain if _is_positive_vote(v.vote))
+        return approvals / len(non_abstain)
+
 
 def _is_positive_vote(vote: str) -> bool:
     return vote.strip().upper() in {"APPROVE", "APPROVED", "YES", "ACCEPT", "ACCEPTED"}

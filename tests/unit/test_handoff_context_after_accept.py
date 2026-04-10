@@ -15,7 +15,7 @@ class TestHandoffContextAfterAccept:
 
     def test_has_accepted_offer_initial(self):
         p = self._proj()
-        assert p.has_accepted_offer is False
+        assert p.has_accepted_offer() is False
 
     def test_has_accepted_offer_after_accept(self):
         p = self._proj()
@@ -35,7 +35,8 @@ class TestHandoffContextAfterAccept:
                 sender="bob",
             )
         )
-        assert p.has_accepted_offer is True
+        assert p.has_accepted_offer() is True
+        assert p.has_accepted_offer("h1") is True
 
     def test_context_after_accept_is_tracked(self):
         """Per RFC-MACP-0010 section 2.1, HandoffContext after accept is permitted."""
@@ -56,7 +57,7 @@ class TestHandoffContextAfterAccept:
                 sender="bob",
             )
         )
-        # Now send context after accept — should work
+        # Now send context after accept — should work; status stays "accepted"
         p.apply_envelope(
             make_envelope(
                 MODE_HANDOFF,
@@ -69,8 +70,10 @@ class TestHandoffContextAfterAccept:
                 sender="alice",
             )
         )
-        assert len(p.contexts["h1"]) == 1
-        assert p.contexts["h1"][0].context == b"supplementary docs"
+        handoff = p.get_handoff("h1")
+        assert handoff is not None
+        assert handoff.context_content_type == "text/plain"
+        assert handoff.status == "accepted"
 
     def test_any_participant_can_send_context(self):
         """Any declared participant can send context, not just the initiator."""
@@ -96,5 +99,7 @@ class TestHandoffContextAfterAccept:
                 sender="bob",
             )
         )
-        assert len(p.contexts["h1"]) == 1
-        assert p.contexts["h1"][0].sender == "bob"
+        handoff = p.get_handoff("h1")
+        assert handoff is not None
+        assert handoff.context_content_type == "text/plain"
+        assert handoff.status == "context_sent"

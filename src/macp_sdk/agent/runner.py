@@ -71,6 +71,8 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
     if isinstance(raw_participants, list):
         participants = [str(p) for p in raw_participants]
 
+    mode_version = ctx.get("mode_version")
+    configuration_version = ctx.get("configuration_version")
     policy_version = ctx.get("policy_version")
 
     return Participant(
@@ -80,5 +82,7 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
         client=client,
         auth=auth,
         participants=participants,
+        mode_version=str(mode_version) if mode_version else None,
+        configuration_version=str(configuration_version) if configuration_version else None,
         policy_version=str(policy_version) if policy_version else DEFAULT_POLICY_VERSION,
     )

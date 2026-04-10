@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import queue
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any
 
 import grpc
 from macp.v1 import core_pb2, core_pb2_grpc, envelope_pb2, policy_pb2
@@ -84,6 +85,7 @@ class MacpStream:
         self._requests: queue.Queue[object] = queue.Queue()
         self._responses: queue.Queue[object] = queue.Queue()
         self._closed = False
+        self._inline_error_callbacks: list[Callable[[Any], None]] = []
         self._call = stub.StreamSession(self._request_iter(), metadata=metadata, timeout=timeout)
         self._thread = threading.Thread(target=self._pump_responses, daemon=True)
         self._thread.start()
@@ -109,7 +111,9 @@ class MacpStream:
                     if envelope is not None and envelope.ByteSize() > 0:
                         self._responses.put(envelope)
                     elif error is not None:
-                        # Inline application-level error — log but keep stream open
+                        # Inline application-level error — notify callbacks, keep stream open
+                        for cb in self._inline_error_callbacks:
+                            cb(error)
                         logger.warning("inline stream error: %s", error)
                         continue
                 else:
@@ -119,6 +123,10 @@ class MacpStream:
             self._responses.put(exc)
         finally:
             self._responses.put(self._END)
+
+    def on_inline_error(self, callback: Callable[[Any], None]) -> None:
+        """Register a callback for inline application-level stream errors."""
+        self._inline_error_callbacks.append(callback)
 
     def send(self, envelope: envelope_pb2.Envelope) -> None:
         if self._closed:
@@ -241,6 +249,10 @@ class MacpClient:
                 raise MacpTransportError(rpc_err.details() or "invalid argument") from rpc_err
             raise MacpTransportError(rpc_err.details() or str(rpc_err)) from rpc_err
         ack = response.ack
+        # Duplicate acks are idempotent success — the message was already accepted.
+        # This matches TypeScript SDK behaviour and is correct for retry scenarios.
+        if ack.duplicate:
+            return ack
         if raise_on_nack and not ack.ok:
             error = ack.error
             reasons = _parse_ack_reasons(ack)
@@ -345,7 +357,7 @@ class MacpClient:
     ) -> core_pb2.RegisterExtModeResponse:
         auth_cfg = self._require_auth(auth)
         return self.stub.RegisterExtMode(
-            core_pb2.RegisterExtModeRequest(descriptor=descriptor),
+            core_pb2.RegisterExtModeRequest(mode_descriptor=descriptor),
             metadata=self._metadata(auth_cfg),
             timeout=timeout or self.default_timeout,
         )
@@ -391,7 +403,7 @@ class MacpClient:
         """Register a governance policy with the runtime."""
         auth_cfg = self._require_auth(auth)
         return self.stub.RegisterPolicy(
-            policy_pb2.RegisterPolicyRequest(descriptor=descriptor),
+            policy_pb2.RegisterPolicyRequest(policy_descriptor=descriptor),
             metadata=self._metadata(auth_cfg),
             timeout=timeout or self.default_timeout,
         )

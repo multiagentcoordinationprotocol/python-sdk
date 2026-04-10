@@ -217,6 +217,7 @@ class TestDecisionProjection:
                     action="deploy",
                     authority_scope="release",
                     reason="done",
+                    outcome_positive=True,
                 ),
             )
         )

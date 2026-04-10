@@ -26,11 +26,13 @@ from macp_sdk.agent.types import (
 def _make_message(
     message_type: str = "Proposal",
     payload: dict[str, Any] | None = None,
+    proposal_id: str = "prop-1",
 ) -> IncomingMessage:
     return IncomingMessage(
         message_type=message_type,
         sender="agent-a",
         payload=payload or {"option": "deploy"},
+        proposal_id=proposal_id,
     )
 
 
@@ -40,10 +42,12 @@ def _make_context(projection: Any = None) -> HandlerContext:
     def log_fn(fmt: str, *args: Any) -> None:
         logs.append(fmt % args if args else fmt)
 
+    actions = MagicMock()
+
     ctx = HandlerContext(
         participant="test-participant",
         projection=projection,
-        actions=None,
+        actions=actions,
         session=SessionInfo(session_id="s1", mode="macp.mode.decision.v1"),
         log_fn=log_fn,
     )
@@ -75,6 +79,9 @@ class TestEvaluationStrategy:
         assert len(logs) == 1
         assert "REJECT" in logs[0]
         assert "0.30" in logs[0]
+        ctx.actions.evaluate.assert_called_once_with(
+            "prop-1", "REJECT", confidence=0.3, reason="risky",
+        )
 
     def test_evaluation_result_frozen(self):
         r = EvaluationResult("APPROVE", 0.9, "ok")
@@ -107,6 +114,9 @@ class TestVotingStrategy:
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 1
         assert "approve" in logs[0]
+        ctx.actions.vote.assert_called_once_with(
+            "prop-1", "approve", reason="all clear",
+        )
 
     def test_voting_handler_skips_when_not_ready(self):
         strategy = function_voter(
@@ -118,6 +128,7 @@ class TestVotingStrategy:
         handler(_make_message(), ctx)
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 0
+        ctx.actions.vote.assert_not_called()
 
     def test_vote_decision_frozen(self):
         d = VoteDecision("approve", "ok")
@@ -152,6 +163,9 @@ class TestCommitmentStrategy:
         assert len(logs) == 1
         assert "approve" in logs[0]
         assert "full" in logs[0]
+        ctx.actions.commit.assert_called_once_with(
+            "approve", "full", reason="done", outcome_positive=True,
+        )
 
     def test_commitment_handler_skips_when_not_ready(self):
         strategy = function_committer(
@@ -163,6 +177,7 @@ class TestCommitmentStrategy:
         handler(_make_message(), ctx)
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 0
+        ctx.actions.commit.assert_not_called()
 
     def test_commitment_decision_frozen(self):
         d = CommitmentDecision("a", "b", "c")
@@ -280,7 +295,7 @@ class TestMajorityCommitter:
         proj = self._mock_projection({"approve": 1}, "opt-a")
         decision = strategy.decide_commitment(proj)
         assert decision.action == "commit"
-        assert decision.authority_scope == "default"
+        assert decision.authority_scope == "session"
 
     def test_outcome_positive_inferred(self):
         strategy = majority_committer(action="proposal.accepted")

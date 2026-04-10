@@ -18,21 +18,16 @@ from .envelope import build_envelope, serialize_message
 
 
 @dataclass(slots=True)
-class HandoffOfferRecord:
+class HandoffRecord:
     handoff_id: str
     target_participant: str
     scope: str
     reason: str
-    offered_by: str
-    disposition: str  # "offered" | "accepted" | "declined"
-
-
-@dataclass(slots=True)
-class HandoffContextRecord:
-    handoff_id: str
-    content_type: str
-    context: bytes
     sender: str
+    status: str  # "offered" | "context_sent" | "accepted" | "declined"
+    context_content_type: str | None
+    accepted_by: str | None
+    declined_by: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -48,8 +43,7 @@ class HandoffProjection(BaseProjection):
     def __init__(self) -> None:
         super().__init__()
         self.phase = "Pending"
-        self.offers: dict[str, HandoffOfferRecord] = {}
-        self.contexts: dict[str, list[HandoffContextRecord]] = {}
+        self.handoffs: dict[str, HandoffRecord] = {}
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
         mt = envelope.message_type
@@ -57,13 +51,16 @@ class HandoffProjection(BaseProjection):
         if mt == "HandoffOffer":
             p = handoff_pb2.HandoffOfferPayload()
             p.ParseFromString(envelope.payload)
-            self.offers[p.handoff_id] = HandoffOfferRecord(
+            self.handoffs[p.handoff_id] = HandoffRecord(
                 handoff_id=p.handoff_id,
                 target_participant=p.target_participant,
                 scope=p.scope,
                 reason=p.reason,
-                offered_by=envelope.sender,
-                disposition="offered",
+                sender=envelope.sender,
+                status="offered",
+                context_content_type=None,
+                accepted_by=None,
+                declined_by=None,
             )
             self.phase = "OfferPending"
             return
@@ -71,52 +68,65 @@ class HandoffProjection(BaseProjection):
         if mt == "HandoffContext":
             p = handoff_pb2.HandoffContextPayload()
             p.ParseFromString(envelope.payload)
-            self.contexts.setdefault(p.handoff_id, []).append(
-                HandoffContextRecord(
-                    handoff_id=p.handoff_id,
-                    content_type=p.content_type,
-                    context=p.context,
-                    sender=envelope.sender,
-                )
-            )
+            handoff = self.handoffs.get(p.handoff_id)
+            if handoff is not None:
+                if handoff.status == "offered":
+                    handoff.status = "context_sent"
+                handoff.context_content_type = p.content_type
+            if self.phase == "OfferPending":
+                self.phase = "ContextSharing"
             return
 
         if mt == "HandoffAccept":
             p = handoff_pb2.HandoffAcceptPayload()
             p.ParseFromString(envelope.payload)
-            if p.handoff_id in self.offers:
-                self.offers[p.handoff_id].disposition = "accepted"
+            handoff = self.handoffs.get(p.handoff_id)
+            if handoff is not None:
+                handoff.status = "accepted"
+                handoff.accepted_by = p.accepted_by
             self.phase = "Accepted"
             return
 
         if mt == "HandoffDecline":
             p = handoff_pb2.HandoffDeclinePayload()
             p.ParseFromString(envelope.payload)
-            if p.handoff_id in self.offers:
-                self.offers[p.handoff_id].disposition = "declined"
+            handoff = self.handoffs.get(p.handoff_id)
+            if handoff is not None:
+                handoff.status = "declined"
+                handoff.declined_by = p.declined_by
             self.phase = "Declined"
 
     # -- State query helpers --
 
-    @property
-    def has_accepted_offer(self) -> bool:
-        """True if any offer has been accepted."""
-        return any(o.disposition == "accepted" for o in self.offers.values())
+    def has_accepted_offer(self, handoff_id: str | None = None) -> bool:
+        """True if any offer (or a specific one) has been accepted."""
+        if handoff_id is not None:
+            handoff = self.handoffs.get(handoff_id)
+            return handoff is not None and handoff.status == "accepted"
+        return any(h.status == "accepted" for h in self.handoffs.values())
 
-    def active_offer(self) -> HandoffOfferRecord | None:
-        """Return the most recent offer with disposition='offered', or None."""
-        for offer in reversed(list(self.offers.values())):
-            if offer.disposition == "offered":
-                return offer
+    def active_offer(self) -> HandoffRecord | None:
+        """Return the most recent pending offer, or None."""
+        for handoff in reversed(list(self.handoffs.values())):
+            if handoff.status in ("offered", "context_sent"):
+                return handoff
         return None
 
     def is_accepted(self, handoff_id: str) -> bool:
-        offer = self.offers.get(handoff_id)
-        return offer is not None and offer.disposition == "accepted"
+        handoff = self.handoffs.get(handoff_id)
+        return handoff is not None and handoff.status == "accepted"
 
     def is_declined(self, handoff_id: str) -> bool:
-        offer = self.offers.get(handoff_id)
-        return offer is not None and offer.disposition == "declined"
+        handoff = self.handoffs.get(handoff_id)
+        return handoff is not None and handoff.status == "declined"
+
+    def get_handoff(self, handoff_id: str) -> HandoffRecord | None:
+        """Return the handoff record for *handoff_id*, or None."""
+        return self.handoffs.get(handoff_id)
+
+    def pending_handoffs(self) -> list[HandoffRecord]:
+        """Return handoffs that are still pending (offered or context_sent)."""
+        return [h for h in self.handoffs.values() if h.status in ("offered", "context_sent")]
 
 
 # ---------------------------------------------------------------------------
