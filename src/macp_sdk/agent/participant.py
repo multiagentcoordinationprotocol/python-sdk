@@ -247,7 +247,11 @@ class Participant:
             self._projection = None
 
         self._actions = ParticipantActions(
-            client, session_id, auth, mode=mode, participant_id=participant_id,
+            client,
+            session_id,
+            auth,
+            mode=mode,
+            participant_id=participant_id,
         )
         self._last_phase: str | None = None
         self._transport = transport

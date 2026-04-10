@@ -95,11 +95,13 @@ class ProposalProjection(BaseProjection):
         if mt == "Accept":
             p = proposal_pb2.AcceptPayload()
             p.ParseFromString(envelope.payload)
-            self.accepts.append(AcceptRecord(
-                proposal_id=p.proposal_id,
-                reason=p.reason,
-                sender=envelope.sender,
-            ))
+            self.accepts.append(
+                AcceptRecord(
+                    proposal_id=p.proposal_id,
+                    reason=p.reason,
+                    sender=envelope.sender,
+                )
+            )
             return
 
         if mt == "Reject":

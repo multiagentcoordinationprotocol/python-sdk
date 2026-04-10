@@ -80,7 +80,10 @@ class TestEvaluationStrategy:
         assert "REJECT" in logs[0]
         assert "0.30" in logs[0]
         ctx.actions.evaluate.assert_called_once_with(
-            "prop-1", "REJECT", confidence=0.3, reason="risky",
+            "prop-1",
+            "REJECT",
+            confidence=0.3,
+            reason="risky",
         )
 
     def test_evaluation_result_frozen(self):
@@ -115,7 +118,9 @@ class TestVotingStrategy:
         assert len(logs) == 1
         assert "approve" in logs[0]
         ctx.actions.vote.assert_called_once_with(
-            "prop-1", "approve", reason="all clear",
+            "prop-1",
+            "approve",
+            reason="all clear",
         )
 
     def test_voting_handler_skips_when_not_ready(self):
@@ -164,7 +169,10 @@ class TestCommitmentStrategy:
         assert "approve" in logs[0]
         assert "full" in logs[0]
         ctx.actions.commit.assert_called_once_with(
-            "approve", "full", reason="done", outcome_positive=True,
+            "approve",
+            "full",
+            reason="done",
+            outcome_positive=True,
         )
 
     def test_commitment_handler_skips_when_not_ready(self):

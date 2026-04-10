@@ -117,9 +117,7 @@ class ProtoRegistry:
         msg.ParseFromString(payload)
         return json_format.MessageToDict(msg, preserving_proto_field_name=True)
 
-    def encode_known_payload(
-        self, mode: str, message_type: str, value: dict[str, Any]
-    ) -> bytes:
+    def encode_known_payload(self, mode: str, message_type: str, value: dict[str, Any]) -> bytes:
         """Encode *value* using the known type mapping for *mode*/*message_type*."""
         type_name = self.get_known_type_name(mode, message_type)
         if type_name is None:

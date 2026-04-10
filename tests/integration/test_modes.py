@@ -74,9 +74,7 @@ class TestDecisionMode:
         ack = session.propose("p1", "Option A", rationale="test")
         assert ack.ok
 
-        ack = session.evaluate(
-            "p1", "APPROVE", confidence=0.9, sender="alice", auth=_auth("alice")
-        )
+        ack = session.evaluate("p1", "APPROVE", confidence=0.9, sender="alice", auth=_auth("alice"))
         assert ack.ok
 
         ack = session.vote("p1", "APPROVE", sender="alice", auth=_auth("alice"))
@@ -183,8 +181,12 @@ class TestTaskMode:
         assert ack.ok
 
         ack = session.update(
-            "t1", status="in_progress", progress=0.5, message="halfway",
-            sender="worker", auth=_auth("worker"),
+            "t1",
+            status="in_progress",
+            progress=0.5,
+            message="halfway",
+            sender="worker",
+            auth=_auth("worker"),
         )
         assert ack.ok
 
@@ -222,7 +224,9 @@ class TestHandoffMode:
         assert ack.ok
 
         ack = session.add_context(
-            "h1", content_type="text/plain", context=b"customer context",
+            "h1",
+            content_type="text/plain",
+            context=b"customer context",
         )
         assert ack.ok
 
@@ -255,7 +259,10 @@ class TestQuorumMode:
         assert ack.ok
 
         ack = session.request_approval(
-            "r1", "deploy v2", summary="production deploy", required_approvals=2,
+            "r1",
+            "deploy v2",
+            summary="production deploy",
+            required_approvals=2,
         )
         assert ack.ok
 

@@ -80,8 +80,8 @@ class TaskProjection(BaseProjection):
         self.completions: list[TaskCompleteRecord] = []
         self.failures: list[TaskFailRecord] = []
         # Per-task mutable state
-        self._assignees: dict[str, str] = {}   # task_id -> assignee
-        self._statuses: dict[str, str] = {}    # task_id -> status
+        self._assignees: dict[str, str] = {}  # task_id -> assignee
+        self._statuses: dict[str, str] = {}  # task_id -> status
         self._progress: dict[str, float] = {}  # task_id -> progress
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
@@ -193,10 +193,7 @@ class TaskProjection(BaseProjection):
     def active_tasks(self) -> list[TaskRequestRecord]:
         """Return task records that are not in a terminal state."""
         active_statuses = {"requested", "accepted", "in_progress"}
-        return [
-            t for t in self.tasks.values()
-            if self._statuses.get(t.task_id) in active_statuses
-        ]
+        return [t for t in self.tasks.values() if self._statuses.get(t.task_id) in active_statuses]
 
 
 # ---------------------------------------------------------------------------

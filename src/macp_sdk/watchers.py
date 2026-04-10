@@ -106,9 +106,7 @@ class PolicyWatcher:
     def changes(self) -> Iterator[PolicyChange]:
         """Yield ``PolicyChange`` items from the runtime stream."""
         for response in self._client.watch_policies():
-            descriptors = (
-                list(response.descriptors) if hasattr(response, "descriptors") else []
-            )
+            descriptors = list(response.descriptors) if hasattr(response, "descriptors") else []
             observed = getattr(response, "observed_at_unix_ms", 0)
             yield PolicyChange(descriptors=descriptors, observed_at_unix_ms=observed)
 
