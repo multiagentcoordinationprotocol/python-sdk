@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.proposal.v1 import proposal_pb2
+
 from macp_sdk.constants import MODE_PROPOSAL
 from macp_sdk.proposal import ProposalProjection
 from tests.conftest import make_envelope
@@ -26,9 +27,10 @@ class TestProposalProjection:
         )
         p.apply_envelope(env)
         assert "p1" in p.proposals
-        assert p.proposals["p1"].disposition == "live"
+        assert p.proposals["p1"].status == "open"
 
-    def test_counter_proposal_supersedes(self):
+    def test_counter_proposal_does_not_retire_original(self):
+        """Counter-proposal does NOT retire the original — both stay live."""
         p = self._proj()
         p.apply_envelope(
             make_envelope(
@@ -48,9 +50,9 @@ class TestProposalProjection:
                 sender="bob",
             )
         )
-        assert p.proposals["p1"].disposition == "withdrawn"
-        assert p.proposals["p2"].disposition == "live"
-        assert len(p.live_proposals()) == 1
+        assert p.proposals["p1"].status == "open"
+        assert p.proposals["p2"].status == "open"
+        assert len(p.live_proposals()) == 2
 
     def test_accept_convergence(self):
         p = self._proj()
@@ -98,6 +100,30 @@ class TestProposalProjection:
         assert p.has_terminal_rejection()
         assert p.phase == "TerminalRejected"
 
+    def test_rejection_audit_trail(self):
+        """Both terminal and non-terminal rejections are tracked."""
+        p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_PROPOSAL,
+                "Reject",
+                proposal_pb2.RejectPayload(proposal_id="p1", terminal=False, reason="maybe not"),
+                sender="alice",
+            )
+        )
+        p.apply_envelope(
+            make_envelope(
+                MODE_PROPOSAL,
+                "Reject",
+                proposal_pb2.RejectPayload(proposal_id="p1", terminal=True, reason="no deal"),
+                sender="bob",
+            )
+        )
+        assert len(p.rejections) == 2
+        assert p.rejections[0].terminal is False
+        assert p.rejections[1].terminal is True
+        assert sum(1 for r in p.rejections if r.terminal) == 1
+
     def test_withdraw(self):
         p = self._proj()
         p.apply_envelope(
@@ -116,5 +142,5 @@ class TestProposalProjection:
                 sender="alice",
             )
         )
-        assert p.proposals["p1"].disposition == "withdrawn"
+        assert p.proposals["p1"].status == "withdrawn"
         assert len(p.live_proposals()) == 0

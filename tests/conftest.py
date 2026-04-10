@@ -5,8 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from macp.v1 import envelope_pb2
+
 from macp_sdk.auth import AuthConfig
 from macp_sdk.envelope import new_message_id, now_unix_ms, serialize_message
 

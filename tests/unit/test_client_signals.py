@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from macp.v1 import core_pb2
+
 from macp_sdk.auth import AuthConfig
 from macp_sdk.envelope import (
     build_envelope,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from macp.modes.handoff.v1 import handoff_pb2
+
 from macp_sdk.constants import MODE_HANDOFF
 from macp_sdk.handoff import HandoffProjection
 from tests.conftest import make_envelope
@@ -31,13 +32,21 @@ class TestHandoffProjection:
                 sender="alice",
             )
         )
-        assert "h1" in p.offers
-        assert p.offers["h1"].disposition == "offered"
+        assert "h1" in p.handoffs
+        assert p.handoffs["h1"].status == "offered"
         assert p.active_offer() is not None
         assert p.phase == "OfferPending"
 
     def test_context(self):
         p = self._proj()
+        p.apply_envelope(
+            make_envelope(
+                MODE_HANDOFF,
+                "HandoffOffer",
+                handoff_pb2.HandoffOfferPayload(handoff_id="h1", target_participant="bob"),
+                sender="alice",
+            )
+        )
         p.apply_envelope(
             make_envelope(
                 MODE_HANDOFF,
@@ -50,8 +59,11 @@ class TestHandoffProjection:
                 sender="alice",
             )
         )
-        assert "h1" in p.contexts
-        assert len(p.contexts["h1"]) == 1
+        handoff = p.get_handoff("h1")
+        assert handoff is not None
+        assert handoff.context_content_type == "application/json"
+        assert handoff.status == "context_sent"
+        assert p.phase == "ContextSharing"
 
     def test_accept(self):
         p = self._proj()

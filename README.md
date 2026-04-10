@@ -77,8 +77,8 @@ make coverage           # coverage report
 # Build
 make build              # sdist + wheel
 
-# Protobuf regen
-make sync-protos-local  # from sibling RFC repo
+# Proto definitions (provided by macp-proto package)
+make dev-link-protos    # link local proto package for development
 ```
 
 For local development against the runtime:
