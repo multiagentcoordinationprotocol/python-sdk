@@ -67,7 +67,6 @@ class DecisionProjection(BaseProjection):
                 rationale=payload.rationale,
                 sender=envelope.sender,
             )
-            self.phase = "Evaluation"
             return
 
         if message_type == "Evaluation":
@@ -82,6 +81,7 @@ class DecisionProjection(BaseProjection):
                     sender=envelope.sender,
                 )
             )
+            self.phase = "Evaluation"
             return
 
         if message_type == "Objection":
@@ -111,7 +111,11 @@ class DecisionProjection(BaseProjection):
     # -- State query helpers (no policy enforcement) --
 
     def vote_totals(self) -> dict[str, int]:
-        """Count positive votes per proposal."""
+        """Count votes per proposal, keyed by proposal_id.
+
+        ABSTAIN votes are tracked but excluded from the totals returned
+        here (which counts only APPROVE votes).
+        """
         totals: dict[str, int] = {}
         for proposal_id, sender_votes in self.votes.items():
             totals[proposal_id] = sum(
@@ -120,20 +124,60 @@ class DecisionProjection(BaseProjection):
         return totals
 
     def majority_winner(self) -> str | None:
-        """Return the proposal_id with the most positive votes, or None."""
+        """Return the proposal_id with a majority of non-abstain votes, or None.
+
+        ABSTAIN votes are excluded from the denominator per RFC-MACP-0004.
+        """
         totals = self.vote_totals()
         if not totals:
             return None
-        return max(totals, key=totals.get)  # type: ignore[arg-type]
+        # Count total non-abstain votes across all proposals
+        non_abstain = 0
+        for sender_votes in self.votes.values():
+            for vote in sender_votes.values():
+                if vote.vote.upper() != "ABSTAIN":
+                    non_abstain += 1
+        if non_abstain == 0:
+            return None
+        for proposal_id, count in totals.items():
+            if count / non_abstain > 0.5:
+                return proposal_id
+        return None
 
-    def has_blocking_objection(self, proposal_id: str) -> bool:
-        """Check if any objection with high/critical/block severity exists."""
-        blocking = {"high", "critical", "block"}
+    def has_blocking_objection(self, proposal_id: str | None = None) -> bool:
+        """Check if any objection with ``critical`` severity exists.
+
+        Only ``critical`` severity triggers a veto per the updated runtime.
+        """
         return any(
-            objection.proposal_id == proposal_id and objection.severity.lower() in blocking
+            objection.severity.lower() == "critical"
+            and (proposal_id is None or objection.proposal_id == proposal_id)
             for objection in self.objections
         )
 
+    def review_evaluations(self) -> list[DecisionEvaluationRecord]:
+        """Return evaluations with REVIEW recommendation (informational only)."""
+        return [e for e in self.evaluations if e.recommendation.upper() == "REVIEW"]
+
+    def qualifying_evaluations(self) -> list[DecisionEvaluationRecord]:
+        """Return evaluations that are *not* REVIEW (i.e., they affect decisions)."""
+        return [e for e in self.evaluations if e.recommendation.upper() != "REVIEW"]
+
+    def vote_ratio(self, proposal_id: str) -> float:
+        """Return the APPROVE vote ratio for *proposal_id*.
+
+        ABSTAIN votes are excluded from the denominator.
+        """
+        sender_votes = self.votes.get(proposal_id)
+        if not sender_votes:
+            return 0.0
+        votes = list(sender_votes.values())
+        non_abstain = [v for v in votes if v.vote.upper() != "ABSTAIN"]
+        if not non_abstain:
+            return 0.0
+        approvals = sum(1 for v in non_abstain if _is_positive_vote(v.vote))
+        return approvals / len(non_abstain)
+
 
 def _is_positive_vote(vote: str) -> bool:
-    return vote.strip().lower() in {"approve", "approved", "yes", "accept", "accepted"}
+    return vote.strip().upper() in {"APPROVE", "APPROVED", "YES", "ACCEPT", "ACCEPTED"}

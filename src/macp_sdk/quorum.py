@@ -29,7 +29,7 @@ class ApprovalRequestRecord:
 @dataclass(slots=True)
 class BallotRecord:
     request_id: str
-    choice: str  # "approve" | "reject" | "abstain"
+    vote: str  # "approve" | "reject" | "abstain"
     reason: str
     sender: str
 
@@ -40,15 +40,20 @@ class BallotRecord:
 
 
 class QuorumProjection(BaseProjection):
-    """In-process state tracking for Quorum mode sessions."""
+    """In-process state tracking for Quorum mode sessions.
+
+    Supports multiple concurrent approval requests within a single session.
+    Query methods accept a ``request_id`` parameter to target a specific
+    request.
+    """
 
     MODE = MODE_QUORUM
 
     def __init__(self) -> None:
         super().__init__()
         self.phase = "Pending"
-        self.request: ApprovalRequestRecord | None = None
-        self.ballots: dict[str, BallotRecord] = {}  # sender -> ballot
+        self.requests: dict[str, ApprovalRequestRecord] = {}
+        self.ballots: dict[str, dict[str, BallotRecord]] = {}  # request_id -> sender -> ballot
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
         mt = envelope.message_type
@@ -56,7 +61,7 @@ class QuorumProjection(BaseProjection):
         if mt == "ApprovalRequest":
             p = quorum_pb2.ApprovalRequestPayload()
             p.ParseFromString(envelope.payload)
-            self.request = ApprovalRequestRecord(
+            self.requests[p.request_id] = ApprovalRequestRecord(
                 request_id=p.request_id,
                 action=p.action,
                 summary=p.summary,
@@ -69,61 +74,80 @@ class QuorumProjection(BaseProjection):
         if mt == "Approve":
             p = quorum_pb2.ApprovePayload()
             p.ParseFromString(envelope.payload)
-            self.ballots[envelope.sender] = BallotRecord(
-                request_id=p.request_id,
-                choice="approve",
-                reason=p.reason,
-                sender=envelope.sender,
-            )
+            self._set_ballot(p.request_id, envelope.sender, "approve", p.reason)
             return
 
         if mt == "Reject":
             p = quorum_pb2.RejectPayload()
             p.ParseFromString(envelope.payload)
-            self.ballots[envelope.sender] = BallotRecord(
-                request_id=p.request_id,
-                choice="reject",
-                reason=p.reason,
-                sender=envelope.sender,
-            )
+            self._set_ballot(p.request_id, envelope.sender, "reject", p.reason)
             return
 
         if mt == "Abstain":
             p = quorum_pb2.AbstainPayload()
             p.ParseFromString(envelope.payload)
-            self.ballots[envelope.sender] = BallotRecord(
-                request_id=p.request_id,
-                choice="abstain",
-                reason=p.reason,
-                sender=envelope.sender,
-            )
+            self._set_ballot(p.request_id, envelope.sender, "abstain", p.reason)
+
+    def _set_ballot(self, request_id: str, sender: str, vote: str, reason: str) -> None:
+        sender_map = self.ballots.setdefault(request_id, {})
+        sender_map[sender] = BallotRecord(
+            request_id=request_id,
+            vote=vote,
+            reason=reason,
+            sender=sender,
+        )
+
+    def _count_votes(self, request_id: str, vote: str) -> int:
+        sender_map = self.ballots.get(request_id)
+        if not sender_map:
+            return 0
+        return sum(1 for b in sender_map.values() if b.vote == vote)
 
     # -- State query helpers --
 
-    def approval_count(self) -> int:
-        return sum(1 for b in self.ballots.values() if b.choice == "approve")
+    def approval_count(self, request_id: str) -> int:
+        return self._count_votes(request_id, "approve")
 
-    def rejection_count(self) -> int:
-        return sum(1 for b in self.ballots.values() if b.choice == "reject")
+    def rejection_count(self, request_id: str) -> int:
+        return self._count_votes(request_id, "reject")
 
-    def abstention_count(self) -> int:
-        return sum(1 for b in self.ballots.values() if b.choice == "abstain")
+    def abstention_count(self, request_id: str) -> int:
+        return self._count_votes(request_id, "abstain")
 
-    def is_threshold_reached(self) -> bool:
-        if self.request is None:
+    def is_threshold_reached(self, request_id: str) -> bool:
+        req = self.requests.get(request_id)
+        if req is None:
             return False
-        return self.approval_count() >= self.request.required_approvals
+        return self.approval_count(request_id) >= req.required_approvals
 
-    def is_threshold_unreachable(self, total_eligible: int) -> bool:
+    def is_threshold_unreachable(self, request_id: str, total_eligible: int) -> bool:
         """True if remaining possible approvals cannot reach the threshold."""
-        if self.request is None:
+        req = self.requests.get(request_id)
+        if req is None:
             return False
-        remaining = total_eligible - len(self.ballots)
-        return self.approval_count() + remaining < self.request.required_approvals
+        remaining = total_eligible - len(self.voted_senders(request_id))
+        return self.approval_count(request_id) + remaining < req.required_approvals
 
-    def commitment_ready(self, total_eligible: int) -> bool:
-        """True if the threshold is reached or mathematically unreachable."""
-        return self.is_threshold_reached() or self.is_threshold_unreachable(total_eligible)
+    def commitment_ready(self, request_id: str) -> bool:
+        """True if the threshold is reached."""
+        return self.is_threshold_reached(request_id)
+
+    def threshold(self, request_id: str) -> int:
+        """Return the required approval count, or 0 if no request yet."""
+        req = self.requests.get(request_id)
+        return req.required_approvals if req else 0
+
+    def voted_senders(self, request_id: str) -> list[str]:
+        """Return list of senders who have cast a ballot for this request."""
+        sender_map = self.ballots.get(request_id)
+        return list(sender_map.keys()) if sender_map else []
+
+    def remaining_votes_needed(self, request_id: str) -> int:
+        """Return how many more approvals are needed to reach quorum."""
+        req = self.requests.get(request_id)
+        if req is None:
+            return 0
+        return max(0, req.required_approvals - self.approval_count(request_id))
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import queue
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any
 
 import grpc
 from macp.v1 import core_pb2, core_pb2_grpc, envelope_pb2, policy_pb2
@@ -16,6 +17,44 @@ from .envelope import (
     serialize_message,
 )
 from .errors import AckFailure, MacpAckError, MacpSdkError, MacpTransportError
+
+
+def _parse_ack_reasons(ack: object) -> list[str]:
+    """Extract structured denial reasons from an ACK error's details."""
+    import json as _json
+
+    error = getattr(ack, "error", None)
+    if not error:
+        return []
+    details_bytes = getattr(error, "details", None) or b""
+    if not details_bytes:
+        return []
+    try:
+        parsed = _json.loads(details_bytes)
+        reasons = parsed.get("reasons", [])
+        return list(reasons) if isinstance(reasons, list) else []
+    except Exception:
+        return []
+
+
+def _parse_grpc_metadata_reasons(rpc_error: grpc.RpcError) -> list[str]:
+    """Extract structured reasons from gRPC trailing metadata."""
+    import json as _json
+
+    try:
+        metadata = rpc_error.trailing_metadata()
+        if not metadata:
+            return []
+        for item in metadata:
+            key, value = item.key, item.value
+            if key == "macp-error-details-bin":
+                data = value if isinstance(value, bytes) else value.encode("utf-8")
+                parsed = _json.loads(data)
+                reasons = parsed.get("reasons", [])
+                return list(reasons) if isinstance(reasons, list) else []
+    except Exception:
+        pass
+    return []
 
 
 def _default_capabilities() -> core_pb2.Capabilities:
@@ -46,6 +85,7 @@ class MacpStream:
         self._requests: queue.Queue[object] = queue.Queue()
         self._responses: queue.Queue[object] = queue.Queue()
         self._closed = False
+        self._inline_error_callbacks: list[Callable[[Any], None]] = []
         self._call = stub.StreamSession(self._request_iter(), metadata=metadata, timeout=timeout)
         self._thread = threading.Thread(target=self._pump_responses, daemon=True)
         self._thread.start()
@@ -61,11 +101,32 @@ class MacpStream:
     def _pump_responses(self) -> None:
         try:
             for response in self._call:
-                self._responses.put(response.envelope)
+                # Support both formats:
+                #   New: StreamSessionResponse { response: { envelope | error } }
+                #   Old: StreamSessionResponse { envelope }
+                inner = getattr(response, "response", None)
+                if inner is not None and hasattr(inner, "ByteSize") and inner.ByteSize() > 0:
+                    envelope = getattr(inner, "envelope", None)
+                    error = getattr(inner, "error", None)
+                    if envelope is not None and envelope.ByteSize() > 0:
+                        self._responses.put(envelope)
+                    elif error is not None:
+                        # Inline application-level error — notify callbacks, keep stream open
+                        for cb in self._inline_error_callbacks:
+                            cb(error)
+                        logger.warning("inline stream error: %s", error)
+                        continue
+                else:
+                    # Flat format: response.envelope
+                    self._responses.put(response.envelope)
         except grpc.RpcError as exc:
             self._responses.put(exc)
         finally:
             self._responses.put(self._END)
+
+    def on_inline_error(self, callback: Callable[[Any], None]) -> None:
+        """Register a callback for inline application-level stream errors."""
+        self._inline_error_callbacks.append(callback)
 
     def send(self, envelope: envelope_pb2.Envelope) -> None:
         if self._closed:
@@ -162,19 +223,45 @@ class MacpClient:
         raise_on_nack: bool = True,
     ) -> envelope_pb2.Ack:
         auth_cfg = self._require_auth(auth)
-        response = self.stub.Send(
-            core_pb2.SendRequest(envelope=envelope),
-            metadata=self._metadata(auth_cfg),
-            timeout=timeout or self.default_timeout,
-        )
+        try:
+            response = self.stub.Send(
+                core_pb2.SendRequest(envelope=envelope),
+                metadata=self._metadata(auth_cfg),
+                timeout=timeout or self.default_timeout,
+            )
+        except grpc.RpcError as rpc_err:
+            code = rpc_err.code()
+            if code == grpc.StatusCode.ALREADY_EXISTS:
+                failure = AckFailure(
+                    code="SESSION_ALREADY_EXISTS",
+                    message=rpc_err.details() or "session already exists",
+                )
+                raise MacpAckError(failure) from rpc_err
+            if code == grpc.StatusCode.FAILED_PRECONDITION:
+                reasons = _parse_grpc_metadata_reasons(rpc_err)
+                failure = AckFailure(
+                    code="POLICY_DENIED",
+                    message=rpc_err.details() or "policy denied",
+                    reasons=reasons,
+                )
+                raise MacpAckError(failure) from rpc_err
+            if code == grpc.StatusCode.INVALID_ARGUMENT:
+                raise MacpTransportError(rpc_err.details() or "invalid argument") from rpc_err
+            raise MacpTransportError(rpc_err.details() or str(rpc_err)) from rpc_err
         ack = response.ack
+        # Duplicate acks are idempotent success — the message was already accepted.
+        # This matches TypeScript SDK behaviour and is correct for retry scenarios.
+        if ack.duplicate:
+            return ack
         if raise_on_nack and not ack.ok:
             error = ack.error
+            reasons = _parse_ack_reasons(ack)
             failure = AckFailure(
                 code=(error.code if error else "UNKNOWN"),
                 message=(error.message if error else "runtime returned nack"),
                 session_id=ack.session_id,
                 message_id=ack.message_id,
+                reasons=reasons,
             )
             raise MacpAckError(failure)
         return ack
@@ -198,16 +285,31 @@ class MacpClient:
         session_id: str,
         *,
         reason: str,
+        cancelled_by: str = "",
         auth: AuthConfig | None = None,
         timeout: float | None = None,
         raise_on_nack: bool = True,
     ) -> envelope_pb2.Ack:
         auth_cfg = self._require_auth(auth)
-        response = self.stub.CancelSession(
-            core_pb2.CancelSessionRequest(session_id=session_id, reason=reason),
-            metadata=self._metadata(auth_cfg),
-            timeout=timeout or self.default_timeout,
-        )
+        request_kwargs: dict[str, object] = {
+            "session_id": session_id,
+            "reason": reason,
+        }
+        # Forward-compatible: add cancelled_by if proto supports it
+        if cancelled_by:
+            has_field = any(
+                f.name == "cancelled_by" for f in core_pb2.CancelSessionRequest.DESCRIPTOR.fields
+            )
+            if has_field:
+                request_kwargs["cancelled_by"] = cancelled_by
+        try:
+            response = self.stub.CancelSession(
+                core_pb2.CancelSessionRequest(**request_kwargs),
+                metadata=self._metadata(auth_cfg),
+                timeout=timeout or self.default_timeout,
+            )
+        except grpc.RpcError as rpc_err:
+            raise MacpTransportError(rpc_err.details() or str(rpc_err)) from rpc_err
         ack = response.ack
         if raise_on_nack and not ack.ok:
             error = ack.error
@@ -255,7 +357,7 @@ class MacpClient:
     ) -> core_pb2.RegisterExtModeResponse:
         auth_cfg = self._require_auth(auth)
         return self.stub.RegisterExtMode(
-            core_pb2.RegisterExtModeRequest(descriptor=descriptor),
+            core_pb2.RegisterExtModeRequest(mode_descriptor=descriptor),
             metadata=self._metadata(auth_cfg),
             timeout=timeout or self.default_timeout,
         )
@@ -301,7 +403,7 @@ class MacpClient:
         """Register a governance policy with the runtime."""
         auth_cfg = self._require_auth(auth)
         return self.stub.RegisterPolicy(
-            policy_pb2.RegisterPolicyRequest(descriptor=descriptor),
+            policy_pb2.RegisterPolicyRequest(policy_descriptor=descriptor),
             metadata=self._metadata(auth_cfg),
             timeout=timeout or self.default_timeout,
         )
@@ -446,8 +548,8 @@ class MacpClient:
     def send_progress(
         self,
         *,
-        session_id: str,
-        mode: str,
+        session_id: str = "",
+        mode: str = "",
         progress_token: str,
         progress: float,
         total: float,
@@ -457,7 +559,12 @@ class MacpClient:
         auth: AuthConfig | None = None,
         timeout: float | None = None,
     ) -> envelope_pb2.Ack:
-        """Send a non-binding progress update within a session."""
+        """Send a progress update.
+
+        When ``session_id`` and ``mode`` are empty, the progress is treated
+        as an *ambient* progress message routed through the signal broadcast
+        path.
+        """
         auth_cfg = self._require_auth(auth)
         payload = build_progress_payload(
             progress_token=progress_token,

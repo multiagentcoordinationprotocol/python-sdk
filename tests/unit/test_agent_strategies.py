@@ -26,11 +26,13 @@ from macp_sdk.agent.types import (
 def _make_message(
     message_type: str = "Proposal",
     payload: dict[str, Any] | None = None,
+    proposal_id: str = "prop-1",
 ) -> IncomingMessage:
     return IncomingMessage(
         message_type=message_type,
         sender="agent-a",
         payload=payload or {"option": "deploy"},
+        proposal_id=proposal_id,
     )
 
 
@@ -40,10 +42,12 @@ def _make_context(projection: Any = None) -> HandlerContext:
     def log_fn(fmt: str, *args: Any) -> None:
         logs.append(fmt % args if args else fmt)
 
+    actions = MagicMock()
+
     ctx = HandlerContext(
         participant="test-participant",
         projection=projection,
-        actions=None,
+        actions=actions,
         session=SessionInfo(session_id="s1", mode="macp.mode.decision.v1"),
         log_fn=log_fn,
     )
@@ -53,9 +57,7 @@ def _make_context(projection: Any = None) -> HandlerContext:
 
 class TestEvaluationStrategy:
     def test_function_evaluator(self):
-        def eval_fn(
-            proposal: dict[str, Any], context: SessionInfo
-        ) -> EvaluationResult:
+        def eval_fn(proposal: dict[str, Any], context: SessionInfo) -> EvaluationResult:
             return EvaluationResult(
                 recommendation="APPROVE",
                 confidence=0.95,
@@ -69,9 +71,7 @@ class TestEvaluationStrategy:
         assert result.reason == "looks good"
 
     def test_evaluation_handler(self):
-        strategy = function_evaluator(
-            lambda p, c: EvaluationResult("REJECT", 0.3, "risky")
-        )
+        strategy = function_evaluator(lambda p, c: EvaluationResult("REJECT", 0.3, "risky"))
         handler = evaluation_handler(strategy)
         ctx = _make_context()
         handler(_make_message(), ctx)
@@ -79,6 +79,12 @@ class TestEvaluationStrategy:
         assert len(logs) == 1
         assert "REJECT" in logs[0]
         assert "0.30" in logs[0]
+        ctx.actions.evaluate.assert_called_once_with(
+            "prop-1",
+            "REJECT",
+            confidence=0.3,
+            reason="risky",
+        )
 
     def test_evaluation_result_frozen(self):
         r = EvaluationResult("APPROVE", 0.9, "ok")
@@ -111,6 +117,11 @@ class TestVotingStrategy:
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 1
         assert "approve" in logs[0]
+        ctx.actions.vote.assert_called_once_with(
+            "prop-1",
+            "approve",
+            reason="all clear",
+        )
 
     def test_voting_handler_skips_when_not_ready(self):
         strategy = function_voter(
@@ -122,6 +133,7 @@ class TestVotingStrategy:
         handler(_make_message(), ctx)
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 0
+        ctx.actions.vote.assert_not_called()
 
     def test_vote_decision_frozen(self):
         d = VoteDecision("approve", "ok")
@@ -156,6 +168,12 @@ class TestCommitmentStrategy:
         assert len(logs) == 1
         assert "approve" in logs[0]
         assert "full" in logs[0]
+        ctx.actions.commit.assert_called_once_with(
+            "approve",
+            "full",
+            reason="done",
+            outcome_positive=True,
+        )
 
     def test_commitment_handler_skips_when_not_ready(self):
         strategy = function_committer(
@@ -167,6 +185,7 @@ class TestCommitmentStrategy:
         handler(_make_message(), ctx)
         logs = ctx._test_logs  # type: ignore[attr-defined]
         assert len(logs) == 0
+        ctx.actions.commit.assert_not_called()
 
     def test_commitment_decision_frozen(self):
         d = CommitmentDecision("a", "b", "c")
@@ -181,9 +200,7 @@ class TestStrategyComposition:
     """Test that strategies can be composed together on a single participant handler chain."""
 
     def test_evaluation_then_voting(self):
-        eval_strategy = function_evaluator(
-            lambda p, c: EvaluationResult("APPROVE", 0.9, "fine")
-        )
+        eval_strategy = function_evaluator(lambda p, c: EvaluationResult("APPROVE", 0.9, "fine"))
         vote_strategy = function_voter(
             should_vote_fn=lambda p: True,
             decide_fn=lambda p: VoteDecision("approve", "evaluation passed"),
@@ -227,14 +244,14 @@ class TestMajorityVoter:
         strategy = majority_voter()
         proj = self._mock_projection({"approve": 3}, "deploy-v2")
         decision = strategy.decide_vote(proj)
-        assert decision.vote == "approve"
+        assert decision.vote == "APPROVE"
         assert "deploy-v2" in decision.reason
 
     def test_decide_vote_no_winner(self):
         strategy = majority_voter()
         proj = self._mock_projection({"approve": 1, "reject": 1})
         decision = strategy.decide_vote(proj)
-        assert decision.vote == "abstain"
+        assert decision.vote == "ABSTAIN"
 
     def test_custom_threshold(self):
         strategy = majority_voter(positive_threshold=0.9)
@@ -286,4 +303,50 @@ class TestMajorityCommitter:
         proj = self._mock_projection({"approve": 1}, "opt-a")
         decision = strategy.decide_commitment(proj)
         assert decision.action == "commit"
-        assert decision.authority_scope == "default"
+        assert decision.authority_scope == "session"
+
+    def test_outcome_positive_inferred(self):
+        strategy = majority_committer(action="proposal.accepted")
+        proj = self._mock_projection({"approve": 1}, "opt-a")
+        decision = strategy.decide_commitment(proj)
+        assert decision.outcome_positive is True
+
+    def test_outcome_positive_negative_action(self):
+        strategy = majority_committer(action="proposal.rejected")
+        proj = self._mock_projection({"approve": 1}, "opt-a")
+        decision = strategy.decide_commitment(proj)
+        assert decision.outcome_positive is False
+
+
+class TestEvaluationValidation:
+    """Test that evaluation_handler validates recommendation and confidence."""
+
+    def test_invalid_recommendation_raises(self):
+        strategy = function_evaluator(lambda p, c: EvaluationResult("INVALID", 0.5, "bad rec"))
+        handler = evaluation_handler(strategy)
+        ctx = _make_context()
+        try:
+            handler(_make_message(), ctx)
+            raise AssertionError("Should have raised")
+        except ValueError as exc:
+            assert "invalid recommendation" in str(exc)
+
+    def test_confidence_above_one_raises(self):
+        strategy = function_evaluator(lambda p, c: EvaluationResult("APPROVE", 1.5, "too high"))
+        handler = evaluation_handler(strategy)
+        ctx = _make_context()
+        try:
+            handler(_make_message(), ctx)
+            raise AssertionError("Should have raised")
+        except ValueError as exc:
+            assert "confidence" in str(exc)
+
+    def test_confidence_below_zero_raises(self):
+        strategy = function_evaluator(lambda p, c: EvaluationResult("APPROVE", -0.1, "too low"))
+        handler = evaluation_handler(strategy)
+        ctx = _make_context()
+        try:
+            handler(_make_message(), ctx)
+            raise AssertionError("Should have raised")
+        except ValueError as exc:
+            assert "confidence" in str(exc)

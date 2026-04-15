@@ -110,7 +110,10 @@ def test_projection_replay(name: str, fixture: dict):
     mode = fixture["mode"]
     projection_cls = MODE_PROJECTIONS.get(mode)
     if projection_cls is None:
-        pytest.skip(f"No projection for mode {mode}")
+        pytest.skip(
+            f"No projection for mode {mode} — "
+            "multi_round is an extension mode; SDK projection not yet implemented"
+        )
 
     projection = projection_cls()
     session_id = "conformance-session"

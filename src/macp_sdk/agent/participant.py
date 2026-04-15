@@ -13,6 +13,7 @@ from ..constants import (
     MODE_QUORUM,
     MODE_TASK,
 )
+from ..envelope import build_commitment_payload, build_envelope, serialize_message
 from ..handoff import HandoffProjection
 from ..projections import DecisionProjection
 from ..proposal import ProposalProjection
@@ -42,10 +43,20 @@ _MODE_PROJECTIONS: dict[str, type[BaseProjection]] = {
 class ParticipantActions:
     """Thin wrapper providing action methods bound to a participant's session."""
 
-    def __init__(self, client: MacpClient, session_id: str, auth: AuthConfig | None) -> None:
+    def __init__(
+        self,
+        client: MacpClient,
+        session_id: str,
+        auth: AuthConfig | None,
+        *,
+        mode: str = "",
+        participant_id: str = "",
+    ) -> None:
         self._client = client
         self._session_id = session_id
         self._auth = auth
+        self._mode = mode
+        self._participant_id = participant_id
 
     def send_envelope(self, envelope: Any) -> Any:
         """Send a pre-built envelope via the MACP client."""
@@ -58,6 +69,132 @@ class ParticipantActions:
     def cancel_session(self, reason: str = "") -> Any:
         """Cancel the session."""
         return self._client.cancel_session(self._session_id, reason=reason, auth=self._auth)
+
+    def evaluate(
+        self,
+        proposal_id: str,
+        recommendation: str,
+        *,
+        confidence: float,
+        reason: str = "",
+    ) -> Any:
+        """Send an Evaluation envelope for a decision-mode session."""
+        from macp.modes.decision.v1 import decision_pb2
+
+        payload = decision_pb2.EvaluationPayload(
+            proposal_id=proposal_id,
+            recommendation=recommendation.upper(),
+            confidence=confidence,
+            reason=reason,
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="Evaluation",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(payload),
+        )
+        return self.send_envelope(envelope)
+
+    def vote(
+        self,
+        proposal_id: str,
+        vote: str,
+        *,
+        reason: str = "",
+    ) -> Any:
+        """Send a Vote envelope for a decision-mode session."""
+        from macp.modes.decision.v1 import decision_pb2
+
+        payload = decision_pb2.VotePayload(
+            proposal_id=proposal_id,
+            vote=vote.upper(),
+            reason=reason,
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="Vote",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(payload),
+        )
+        return self.send_envelope(envelope)
+
+    def raise_objection(
+        self,
+        proposal_id: str,
+        *,
+        reason: str,
+        severity: str = "medium",
+    ) -> Any:
+        """Send an Objection envelope for a decision-mode session."""
+        from macp.modes.decision.v1 import decision_pb2
+
+        payload = decision_pb2.ObjectionPayload(
+            proposal_id=proposal_id,
+            reason=reason,
+            severity=severity.lower(),
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="Objection",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(payload),
+        )
+        return self.send_envelope(envelope)
+
+    def propose(
+        self,
+        proposal_id: str,
+        option: str,
+        *,
+        rationale: str = "",
+        supporting_data: bytes = b"",
+    ) -> Any:
+        """Send a Proposal envelope for a decision-mode session."""
+        from macp.modes.decision.v1 import decision_pb2
+
+        payload = decision_pb2.ProposalPayload(
+            proposal_id=proposal_id,
+            option=option,
+            rationale=rationale,
+            supporting_data=supporting_data,
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="Proposal",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(payload),
+        )
+        return self.send_envelope(envelope)
+
+    def commit(
+        self,
+        action: str,
+        authority_scope: str,
+        *,
+        reason: str = "",
+        commitment_id: str | None = None,
+        outcome_positive: bool = True,
+    ) -> Any:
+        """Send a Commitment envelope for the session."""
+        commitment_payload = build_commitment_payload(
+            action=action,
+            authority_scope=authority_scope,
+            reason=reason,
+            commitment_id=commitment_id,
+            outcome_positive=outcome_positive,
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="Commitment",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(commitment_payload),
+        )
+        return self.send_envelope(envelope)
 
 
 class Participant:
@@ -81,6 +218,8 @@ class Participant:
         client: MacpClient,
         auth: AuthConfig | None = None,
         participants: list[str] | None = None,
+        mode_version: str | None = None,
+        configuration_version: str | None = None,
         policy_version: str | None = None,
         transport: TransportAdapter | None = None,
     ) -> None:
@@ -96,6 +235,8 @@ class Participant:
             session_id=session_id,
             mode=mode,
             participants=list(participants or []),
+            mode_version=mode_version,
+            configuration_version=configuration_version,
             policy_version=policy_version,
         )
 
@@ -105,7 +246,13 @@ class Participant:
         else:
             self._projection = None
 
-        self._actions = ParticipantActions(client, session_id, auth)
+        self._actions = ParticipantActions(
+            client,
+            session_id,
+            auth,
+            mode=mode,
+            participant_id=participant_id,
+        )
         self._last_phase: str | None = None
         self._transport = transport
 
@@ -232,7 +379,9 @@ class Participant:
         )
 
         transport = self._transport or GrpcTransportAdapter(
-            self._client, self._session_id, auth=self._auth,
+            self._client,
+            self._session_id,
+            auth=self._auth,
         )
         try:
             for message in transport.start():

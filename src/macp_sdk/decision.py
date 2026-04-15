@@ -9,7 +9,12 @@ from .base_projection import BaseProjection
 from .base_session import BaseSession
 from .constants import MODE_DECISION
 from .envelope import build_envelope, serialize_message
+from .errors import MacpSessionError
 from .projections import DecisionProjection
+
+_VALID_VOTES = frozenset({"APPROVE", "REJECT", "ABSTAIN"})
+_VALID_RECOMMENDATIONS = frozenset({"APPROVE", "REVIEW", "BLOCK", "REJECT"})
+_VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low"})
 
 
 class DecisionSession(BaseSession):
@@ -18,6 +23,10 @@ class DecisionSession(BaseSession):
     Inherits ``start``, ``commit``, ``cancel``, ``metadata``, and ``open_stream``
     from :class:`BaseSession`.  Adds decision-specific actions: ``propose``,
     ``evaluate``, ``raise_objection``, and ``vote``.
+
+    Note: The initiator must be included in the ``participants`` list passed
+    to ``start()`` in order to propose.  The runtime no longer grants
+    implicit proposal authority to the initiator.
     """
 
     MODE = MODE_DECISION
@@ -66,9 +75,17 @@ class DecisionSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> Any:
+        normalized_rec = recommendation.upper()
+        if normalized_rec not in _VALID_RECOMMENDATIONS:
+            raise MacpSessionError(
+                f"invalid recommendation {recommendation!r}: "
+                "must be one of APPROVE, REVIEW, BLOCK, REJECT"
+            )
+        if not (0.0 <= confidence <= 1.0):
+            raise MacpSessionError(f"confidence must be in [0.0, 1.0], got {confidence}")
         payload = decision_pb2.EvaluationPayload(
             proposal_id=proposal_id,
-            recommendation=recommendation,
+            recommendation=normalized_rec,
             confidence=confidence,
             reason=reason,
         )
@@ -90,10 +107,15 @@ class DecisionSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> Any:
+        normalized_sev = severity.lower()
+        if normalized_sev not in _VALID_SEVERITIES:
+            raise MacpSessionError(
+                f"invalid severity {severity!r}: must be one of critical, high, medium, low"
+            )
         payload = decision_pb2.ObjectionPayload(
             proposal_id=proposal_id,
             reason=reason,
-            severity=severity,
+            severity=normalized_sev,
         )
         envelope = build_envelope(
             mode=self.MODE,
@@ -113,9 +135,14 @@ class DecisionSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> Any:
+        normalized_vote = vote.upper()
+        if normalized_vote not in _VALID_VOTES:
+            raise MacpSessionError(
+                f"invalid vote value {vote!r}: must be one of APPROVE, REJECT, ABSTAIN"
+            )
         payload = decision_pb2.VotePayload(
             proposal_id=proposal_id,
-            vote=vote,
+            vote=normalized_vote,
             reason=reason,
         )
         envelope = build_envelope(

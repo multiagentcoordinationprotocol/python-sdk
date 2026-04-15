@@ -20,6 +20,7 @@ from .envelope import (
     new_session_id,
     serialize_message,
 )
+from .validation import validate_participant_count, validate_session_id
 
 
 class BaseSession(ABC):
@@ -44,6 +45,8 @@ class BaseSession(ABC):
     ) -> None:
         self.client = client
         self.session_id = session_id or new_session_id()
+        if session_id:
+            validate_session_id(session_id)
         self.mode_version = mode_version
         self.configuration_version = configuration_version
         self.policy_version = policy_version
@@ -95,6 +98,7 @@ class BaseSession(ABC):
         sender: str | None = None,
     ) -> Any:
         """Send SessionStart and begin tracking via the projection."""
+        validate_participant_count(len(participants))
         payload = build_session_start_payload(
             intent=intent,
             participants=participants,
@@ -121,6 +125,7 @@ class BaseSession(ABC):
         authority_scope: str,
         reason: str,
         commitment_id: str | None = None,
+        outcome_positive: bool | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> Any:
@@ -133,6 +138,7 @@ class BaseSession(ABC):
             mode_version=self.mode_version,
             configuration_version=self.configuration_version,
             policy_version=self.policy_version,
+            outcome_positive=outcome_positive,
         )
         envelope = build_envelope(
             mode=self.MODE,

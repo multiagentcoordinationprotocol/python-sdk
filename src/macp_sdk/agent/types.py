@@ -24,6 +24,8 @@ class SessionInfo:
     session_id: str
     mode: str
     participants: list[str] = field(default_factory=list)
+    mode_version: str | None = None
+    configuration_version: str | None = None
     policy_version: str | None = None
 
 

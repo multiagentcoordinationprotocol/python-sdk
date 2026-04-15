@@ -25,6 +25,13 @@ class BaseProjection(ABC):
     def is_committed(self) -> bool:
         return self.commitment is not None
 
+    @property
+    def is_positive_outcome(self) -> bool | None:
+        """Return the outcome polarity, or ``None`` if not yet committed."""
+        if self.commitment is None:
+            return None
+        return getattr(self.commitment, "outcome_positive", True)
+
     def apply_envelope(self, envelope: envelope_pb2.Envelope) -> None:
         """Process an accepted envelope and update local state."""
         if envelope.mode != self.MODE:

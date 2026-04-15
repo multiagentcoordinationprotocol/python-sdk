@@ -64,18 +64,25 @@ class TaskFailRecord:
 
 
 class TaskProjection(BaseProjection):
-    """In-process state tracking for Task mode sessions."""
+    """In-process state tracking for Task mode sessions.
+
+    Supports multiple tasks within a single session.  Each task is tracked
+    independently with its own status and progress.
+    """
 
     MODE = MODE_TASK
 
     def __init__(self) -> None:
         super().__init__()
         self.phase = "Pending"
-        self.task: TaskRequestRecord | None = None
-        self.active_assignee: str | None = None
-        self.rejections: list[TaskRejectRecord] = []
+        self.tasks: dict[str, TaskRequestRecord] = {}
         self.updates: list[TaskUpdateRecord] = []
-        self.terminal_report: TaskCompleteRecord | TaskFailRecord | None = None
+        self.completions: list[TaskCompleteRecord] = []
+        self.failures: list[TaskFailRecord] = []
+        # Per-task mutable state
+        self._assignees: dict[str, str] = {}  # task_id -> assignee
+        self._statuses: dict[str, str] = {}  # task_id -> status
+        self._progress: dict[str, float] = {}  # task_id -> progress
 
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
         mt = envelope.message_type
@@ -83,33 +90,31 @@ class TaskProjection(BaseProjection):
         if mt == "TaskRequest":
             p = task_pb2.TaskRequestPayload()
             p.ParseFromString(envelope.payload)
-            self.task = TaskRequestRecord(
+            self.tasks[p.task_id] = TaskRequestRecord(
                 task_id=p.task_id,
                 title=p.title,
                 instructions=p.instructions,
                 requested_assignee=p.requested_assignee,
                 requester=envelope.sender,
             )
+            self._statuses[p.task_id] = "requested"
+            self._progress[p.task_id] = 0.0
             self.phase = "Requested"
             return
 
         if mt == "TaskAccept":
             p = task_pb2.TaskAcceptPayload()
             p.ParseFromString(envelope.payload)
-            self.active_assignee = p.assignee or envelope.sender
+            assignee = p.assignee or envelope.sender
+            self._assignees[p.task_id] = assignee
+            self._statuses[p.task_id] = "accepted"
             self.phase = "InProgress"
             return
 
         if mt == "TaskReject":
             p = task_pb2.TaskRejectPayload()
             p.ParseFromString(envelope.payload)
-            self.rejections.append(
-                TaskRejectRecord(
-                    task_id=p.task_id,
-                    assignee=p.assignee or envelope.sender,
-                    reason=p.reason,
-                )
-            )
+            self._statuses[p.task_id] = "rejected"
             return
 
         if mt == "TaskUpdate":
@@ -123,45 +128,72 @@ class TaskProjection(BaseProjection):
                     message=p.message,
                 )
             )
+            self._statuses[p.task_id] = "in_progress"
+            self._progress[p.task_id] = p.progress
             return
 
         if mt == "TaskComplete":
             p = task_pb2.TaskCompletePayload()
             p.ParseFromString(envelope.payload)
-            self.terminal_report = TaskCompleteRecord(
-                task_id=p.task_id,
-                assignee=p.assignee or envelope.sender,
-                summary=p.summary,
-                output=p.output,
+            self.completions.append(
+                TaskCompleteRecord(
+                    task_id=p.task_id,
+                    assignee=p.assignee or envelope.sender,
+                    summary=p.summary,
+                    output=p.output,
+                )
             )
+            self._statuses[p.task_id] = "completed"
+            self._progress[p.task_id] = 1.0
             self.phase = "Completed"
             return
 
         if mt == "TaskFail":
             p = task_pb2.TaskFailPayload()
             p.ParseFromString(envelope.payload)
-            self.terminal_report = TaskFailRecord(
-                task_id=p.task_id,
-                assignee=p.assignee or envelope.sender,
-                error_code=p.error_code,
-                reason=p.reason,
-                retryable=p.retryable,
+            self.failures.append(
+                TaskFailRecord(
+                    task_id=p.task_id,
+                    assignee=p.assignee or envelope.sender,
+                    error_code=p.error_code,
+                    reason=p.reason,
+                    retryable=p.retryable,
+                )
             )
+            self._statuses[p.task_id] = "failed"
             self.phase = "Failed"
 
     # -- State query helpers --
 
-    def is_accepted(self) -> bool:
-        return self.active_assignee is not None
+    def get_task(self, task_id: str) -> TaskRequestRecord | None:
+        """Return the task request record for *task_id*, or None."""
+        return self.tasks.get(task_id)
 
-    def is_completed(self) -> bool:
-        return isinstance(self.terminal_report, TaskCompleteRecord)
+    def is_accepted(self, task_id: str) -> bool:
+        status = self._statuses.get(task_id)
+        return status == "accepted" or status == "in_progress"
 
-    def is_failed(self) -> bool:
-        return isinstance(self.terminal_report, TaskFailRecord)
+    def is_completed(self, task_id: str) -> bool:
+        return self._statuses.get(task_id) == "completed"
+
+    def is_failed(self, task_id: str) -> bool:
+        return self._statuses.get(task_id) == "failed"
+
+    def is_retryable(self, task_id: str) -> bool:
+        """True if the task failed with ``retryable=True``."""
+        return any(f.task_id == task_id and f.retryable for f in self.failures)
+
+    def progress_of(self, task_id: str) -> float:
+        """Return the latest progress value for *task_id*, or 0 if unknown."""
+        return self._progress.get(task_id, 0.0)
 
     def latest_progress(self) -> float | None:
         return self.updates[-1].progress if self.updates else None
+
+    def active_tasks(self) -> list[TaskRequestRecord]:
+        """Return task records that are not in a terminal state."""
+        active_statuses = {"requested", "accepted", "in_progress"}
+        return [t for t in self.tasks.values() if self._statuses.get(t.task_id) in active_statuses]
 
 
 # ---------------------------------------------------------------------------

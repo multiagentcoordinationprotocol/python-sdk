@@ -12,10 +12,21 @@ def main() -> None:
         print("initialize:", init.selected_protocol_version, init.runtime_info.name)
 
         session = DecisionSession(client)
-        session.start(intent="pick a deployment", participants=["alice", "bob"], ttl_ms=60_000)
+        # Initiator must be in participants to propose
+        session.start(
+            intent="pick a deployment",
+            participants=["coordinator", "alice", "bob"],
+            ttl_ms=60_000,
+        )
         session.propose("p1", "deploy-v2.1", rationale="canary checks passed")
-        session.evaluate("p1", "approve", confidence=0.95, reason="risk low", sender="alice", auth=AuthConfig.for_dev_agent("alice"))
-        session.vote("p1", "approve", reason="ship it", sender="bob", auth=AuthConfig.for_dev_agent("bob"))
+        session.evaluate(
+            "p1", "APPROVE", confidence=0.95, reason="risk low",
+            sender="alice", auth=AuthConfig.for_dev_agent("alice"),
+        )
+        session.vote(
+            "p1", "APPROVE", reason="ship it",
+            sender="bob", auth=AuthConfig.for_dev_agent("bob"),
+        )
 
         winner = session.projection.majority_winner()
         print("winner:", winner)
