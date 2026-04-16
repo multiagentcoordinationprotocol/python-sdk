@@ -133,7 +133,7 @@ def function_voter(
     """Wrap plain functions as a VotingStrategy."""
 
     class _FnVoter:
-        __slots__ = ("_should_fn", "_decide_fn")
+        __slots__ = ("_decide_fn", "_should_fn")
 
         def __init__(
             self,
@@ -181,7 +181,9 @@ def commitment_handler(strategy: CommitmentStrategy) -> MessageHandler:
     is called and the decision is logged.
     """
 
-    def handler(message: IncomingMessage, ctx: HandlerContext) -> None:
+    def handler(_message: IncomingMessage, ctx: HandlerContext) -> None:
+        # commitment decisions are projection-driven; the triggering message
+        # itself isn't read, but the signature must match MessageHandler.
         if not strategy.should_commit(ctx.projection):
             return
         decision = strategy.decide_commitment(ctx.projection)
@@ -208,7 +210,7 @@ def function_committer(
     """Wrap plain functions as a CommitmentStrategy."""
 
     class _FnCommitter:
-        __slots__ = ("_should_fn", "_decide_fn")
+        __slots__ = ("_decide_fn", "_should_fn")
 
         def __init__(
             self,
@@ -282,7 +284,7 @@ def majority_committer(
     """
 
     class _MajorityCommitter:
-        __slots__ = ("_quorum", "_action", "_scope")
+        __slots__ = ("_action", "_quorum", "_scope")
 
         def __init__(self, quorum: int, commit_action: str, scope: str) -> None:
             self._quorum = quorum

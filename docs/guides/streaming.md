@@ -13,7 +13,7 @@ from macp.modes.decision.v1 import decision_pb2
 
 client = MacpClient(
     target="127.0.0.1:50051",
-    secure=False,
+    allow_insecure=True,  # local dev only — TLS is default
     auth=AuthConfig.for_dev_agent("coordinator"),
 )
 

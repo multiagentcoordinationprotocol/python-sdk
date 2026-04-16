@@ -68,7 +68,7 @@ from macp_sdk import AuthConfig, MacpClient, DecisionSession
 
 client = MacpClient(
     target="127.0.0.1:50051",
-    secure=False,
+    allow_insecure=True,  # local dev; production uses TLS by default
     auth=AuthConfig.for_dev_agent("coordinator"),
 )
 

@@ -75,7 +75,7 @@ _PB2_MODULES_LOADED = False
 
 
 def _ensure_pb2_imports() -> None:
-    global _PB2_MODULES_LOADED  # noqa: PLW0603
+    global _PB2_MODULES_LOADED
     if _PB2_MODULES_LOADED:
         return
     # Import all proto modules to register their descriptors in the global pool.

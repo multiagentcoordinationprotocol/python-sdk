@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "macp-sdk-python"
-version = "0.1.0"
+version = "0.2.1"
 description = "Python SDK for the MACP Rust runtime"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,10 @@ classifiers = [
 dependencies = [
   "grpcio>=1.74.0",
   "protobuf>=5.27.0",
-  "macp-proto>=0.1.0,<1.0.0",
+  # Tested against 0.1.x; narrow the upper bound so a hypothetical 0.2.0
+  # proto release doesn't silently land without the conformance suite
+  # being re-run. See docs/contributing.md "Bumping macp-proto".
+  "macp-proto>=0.1.0,<0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +61,18 @@ target-version = "py311"
 extend-exclude = []
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ARG", "RET", "N", "RUF"]
+# N806: allow lowercase-only asserts (pytest idiom); tests fake-proto fixtures
+# sometimes bind PascalCase temporaries that mirror proto class names.
+# N802: tests use snake_case method names in some mocked proto calls.
+extend-ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Test files get some latitude:
+#   ARG001/002/005 — pytest fixtures and mock-lambda signatures intentionally
+#                    carry unused parameters to match the production callable.
+#   N802/806      — mocked proto classes and fixtures use PascalCase locals.
+"tests/**/*.py" = ["ARG001", "ARG002", "ARG005", "N802", "N806"]
 
 [tool.mypy]
 packages = ["macp_sdk"]

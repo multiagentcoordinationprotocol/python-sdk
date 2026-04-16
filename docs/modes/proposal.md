@@ -69,7 +69,7 @@ A session becomes eligible for Commitment when:
 from macp_sdk import AuthConfig, MacpClient
 from macp_sdk.proposal import ProposalSession
 
-client = MacpClient(target="127.0.0.1:50051", secure=False, auth=AuthConfig.for_dev_agent("coordinator"))
+client = MacpClient(target="127.0.0.1:50051", allow_insecure=True, auth=AuthConfig.for_dev_agent("coordinator"))
 session = ProposalSession(client)
 session.start(
     intent="negotiate service contract terms",

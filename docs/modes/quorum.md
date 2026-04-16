@@ -69,7 +69,7 @@ The orchestrator then commits with the appropriate action (approved or rejected)
 from macp_sdk import AuthConfig, MacpClient
 from macp_sdk.quorum import QuorumSession
 
-client = MacpClient(target="127.0.0.1:50051", secure=False, auth=AuthConfig.for_dev_agent("coordinator"))
+client = MacpClient(target="127.0.0.1:50051", allow_insecure=True, auth=AuthConfig.for_dev_agent("coordinator"))
 session = QuorumSession(client)
 session.start(
     intent="approve security policy update",

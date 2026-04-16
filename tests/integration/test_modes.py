@@ -29,7 +29,7 @@ def _auth(agent_id: str) -> AuthConfig:
 def client() -> MacpClient:
     c = MacpClient(
         target=RUNTIME_TARGET,
-        secure=False,
+        allow_insecure=True,
         auth=_auth("coordinator"),
     )
     yield c

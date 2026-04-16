@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from macp.modes.handoff.v1 import handoff_pb2
 from macp.v1 import envelope_pb2
@@ -156,7 +155,7 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = handoff_pb2.HandoffOfferPayload(
             handoff_id=handoff_id,
             target_participant=target_participant,
@@ -167,7 +166,7 @@ class HandoffSession(BaseSession):
             mode=self.MODE,
             message_type="HandoffOffer",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -180,7 +179,7 @@ class HandoffSession(BaseSession):
         context: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = handoff_pb2.HandoffContextPayload(
             handoff_id=handoff_id,
             content_type=content_type,
@@ -190,7 +189,7 @@ class HandoffSession(BaseSession):
             mode=self.MODE,
             message_type="HandoffContext",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -203,17 +202,17 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = handoff_pb2.HandoffAcceptPayload(
             handoff_id=handoff_id,
-            accepted_by=accepted_by or self._sender_for(sender),
+            accepted_by=accepted_by or self._sender_for(sender, auth=auth),
             reason=reason,
         )
         envelope = build_envelope(
             mode=self.MODE,
             message_type="HandoffAccept",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -226,17 +225,17 @@ class HandoffSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = handoff_pb2.HandoffDeclinePayload(
             handoff_id=handoff_id,
-            declined_by=declined_by or self._sender_for(sender),
+            declined_by=declined_by or self._sender_for(sender, auth=auth),
             reason=reason,
         )
         envelope = build_envelope(
             mode=self.MODE,
             message_type="HandoffDecline",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)

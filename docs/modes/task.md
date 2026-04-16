@@ -77,7 +77,7 @@ A session becomes eligible for Commitment when:
 from macp_sdk import AuthConfig, MacpClient
 from macp_sdk.task import TaskSession
 
-client = MacpClient(target="127.0.0.1:50051", secure=False, auth=AuthConfig.for_dev_agent("planner"))
+client = MacpClient(target="127.0.0.1:50051", allow_insecure=True, auth=AuthConfig.for_dev_agent("planner"))
 session = TaskSession(client)
 session.start(
     intent="analyze Q4 sales data",

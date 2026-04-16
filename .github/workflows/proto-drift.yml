@@ -1,0 +1,65 @@
+name: Proto drift watch
+
+# Runs the SDK test suite against the *latest* published macp-proto
+# release (any 0.x version, unpinned) once a day. If a newer proto
+# silently introduces a breaking change the job fails and opens a
+# tracking issue so we notice before downstream users do. See
+# docs/contributing.md "Bumping macp-proto" for the manual process.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # 06:00 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install with latest macp-proto 0.x
+        run: |
+          pip install -e ".[dev]"
+          pip install --upgrade "macp-proto>=0.1.0,<1.0.0"
+          pip show macp-proto
+
+      - name: Run unit + conformance suite
+        id: tests
+        run: |
+          pytest tests/unit tests/conformance -q
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const proto = await github.rest.repos.getContent({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: 'pyproject.toml',
+            }).catch(() => null);
+            const body = [
+              '### Proto drift detected',
+              '',
+              'The daily `proto-drift` workflow failed running the SDK test suite against the',
+              'latest published `macp-proto` release. A new proto version may have introduced a',
+              'breaking change the pinned range now excludes but future contributors would hit.',
+              '',
+              '- Workflow run: ' + `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '- See `docs/contributing.md` → **Bumping `macp-proto`** for the triage process.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'proto-drift: daily check failed',
+              body,
+              labels: ['proto-drift', 'maintenance'],
+            });

@@ -22,24 +22,46 @@ pip install macp-sdk-python
 
 ## Quick start
 
-```python
-from macp_sdk import AuthConfig, MacpClient, DecisionSession
+### Production (Bearer + TLS)
 
+```python
+from macp_sdk import AuthConfig, DecisionSession, MacpClient
+
+# TLS is the default; Bearer + expected_sender binds the session to this identity.
+client = MacpClient(
+    target="runtime.example.com:50051",
+    auth=AuthConfig.for_bearer("tok-coord", expected_sender="coordinator"),
+)
+```
+
+### Local dev (runtime started with `MACP_ALLOW_INSECURE=1`)
+
+```python
 client = MacpClient(
     target="127.0.0.1:50051",
-    secure=False,
+    allow_insecure=True,                                # dev only
     auth=AuthConfig.for_dev_agent("coordinator"),
 )
+```
 
+### Driving a decision
+
+```python
 session = DecisionSession(client)
 session.start(
     intent="pick a deployment plan",
-    participants=["alice", "bob"],
+    participants=["coordinator", "alice", "bob"],
     ttl_ms=60_000,
 )
 session.propose("p1", "deploy v2.1", rationale="tests passed")
-session.evaluate("p1", "approve", confidence=0.94, reason="low risk", sender="alice")
-session.vote("p1", "approve", reason="ship it", sender="bob")
+session.evaluate(
+    "p1", "approve", confidence=0.94, reason="low risk",
+    sender="alice", auth=AuthConfig.for_dev_agent("alice"),
+)
+session.vote(
+    "p1", "approve", reason="ship it",
+    sender="bob", auth=AuthConfig.for_dev_agent("bob"),
+)
 
 winner = session.decision_projection.majority_winner()
 if winner and not session.decision_projection.has_blocking_objection(winner):

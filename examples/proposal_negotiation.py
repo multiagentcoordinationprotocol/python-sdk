@@ -4,13 +4,13 @@ Demonstrates: propose, counter_propose, accept, reject, commit.
 Requires a running MACP runtime on localhost:50051.
 """
 
-from macp_sdk import AuthConfig, MacpClient, MODE_PROPOSAL
+from macp_sdk import AuthConfig, MacpClient
 from macp_sdk.proposal import ProposalSession
 
 # --- Create clients for each participant ---
 coordinator = MacpClient(
     target="127.0.0.1:50051",
-    secure=False,
+    allow_insecure=True,  # local dev only; production requires TLS (RFC-0006 §3)
     auth=AuthConfig.for_dev_agent("coordinator"),
 )
 buyer = AuthConfig.for_dev_agent("buyer")
@@ -29,7 +29,9 @@ session.propose("p1", "Standard Package", summary="$100k/year, basic SLA", sende
 
 # --- Buyer counter-proposes ---
 session.counter_propose(
-    "p2", "p1", "Enhanced Package",
+    "p2",
+    "p1",
+    "Enhanced Package",
     summary="$80k/year, enhanced SLA",
     sender="buyer",
 )
@@ -45,7 +47,7 @@ if proj.accepted_proposal() == "p2":
     session.commit(
         action="contract.agreed",
         authority_scope="procurement",
-        reason=f"Both parties accepted proposal p2",
+        reason="Both parties accepted proposal p2",
     )
     print(f"Negotiation resolved: {proj.commitment.action}")  # type: ignore[union-attr]
 else:

@@ -18,10 +18,36 @@ This sends the `x-macp-agent-id: my-agent` header. The runtime uses this as the 
 ## Production: bearer tokens
 
 ```python
-auth = AuthConfig.for_bearer("tok-abc123", sender_hint="my-agent")
+auth = AuthConfig.for_bearer(
+    "tok-abc123",
+    expected_sender="my-agent",   # client-side guardrail
+)
 ```
 
 This sends the `Authorization: Bearer tok-abc123` header. The runtime validates the token against its token configuration and maps it to a sender identity.
+
+### `expected_sender` (client-side guardrail, SDK ≥ 0.2.0)
+
+`expected_sender` is the identity the runtime will bind this token to. When
+set, the SDK raises `MacpIdentityMismatchError` **before** the envelope
+reaches the wire if a call passes an explicit `sender=` that does not match.
+This surfaces identity mistakes as a clear Python exception instead of
+an opaque `UNAUTHENTICATED` from the runtime.
+
+```python
+from macp_sdk import AuthConfig, MacpIdentityMismatchError
+
+auth = AuthConfig.for_bearer("tok-alice", expected_sender="alice")
+session = DecisionSession(client, auth=auth)
+
+session.vote("p1", "approve")                  # sender defaults to "alice" — OK
+session.vote("p1", "approve", sender="alice")  # matches — OK
+session.vote("p1", "approve", sender="mallory")
+# ↑ raises MacpIdentityMismatchError(expected="alice", actual="mallory")
+```
+
+When `expected_sender` is `None` (legacy behaviour), the SDK performs no
+client-side check and the runtime remains the final authority.
 
 ### Token configuration (runtime side)
 
@@ -58,32 +84,56 @@ The runtime accepts token configuration via `MACP_AUTH_TOKENS_JSON` or `MACP_AUT
 
 ## Sender identity
 
-The `sender` field on envelopes is **runtime-derived**, not self-asserted:
+The `sender` field on envelopes is **runtime-derived**, not self-asserted — RFC-MACP-0004 §4. The runtime maps your auth credential (token or dev-header) to a single identity and rejects any envelope whose `sender` disagrees with `UNAUTHENTICATED`.
+
+The SDK enforces the same rule client-side via `expected_sender`:
 
 ```python
-# SDK sets sender from AuthConfig
-auth = AuthConfig.for_dev_agent("alice")
-# auth.sender → "alice"
+from macp_sdk import AuthConfig, MacpIdentityMismatchError
 
-# When sending a message, the SDK populates the envelope's sender field
+auth = AuthConfig.for_bearer("tok-alice", expected_sender="alice")
+
+# No explicit sender — the SDK fills in "alice".
+session.vote("p1", "approve")
+
+# Explicit sender matches — allowed.
 session.vote("p1", "approve", sender="alice")
-# The runtime validates that the authenticated identity matches "alice"
+
+# Mismatch — raises MacpIdentityMismatchError BEFORE the envelope is sent.
+session.vote("p1", "approve", sender="mallory")
 ```
 
-If you attempt to send with a sender that doesn't match your credentials, the runtime rejects with `UNAUTHENTICATED`.
+See the [Direct Agent Auth guide](guides/direct-agent-auth.md) for the
+end-to-end pattern.
 
-### The `sender_hint` field
+### Advanced: `sender_hint`
 
-`sender_hint` is the identity the SDK uses when constructing envelopes. For dev agents, it's automatically set to the `agent_id`. For bearer tokens, you should provide it explicitly:
+`sender_hint` is the low-level field the SDK reads when no explicit `sender=`
+is passed to a method. In almost every case you should not set it directly —
+pass `expected_sender` instead and let the SDK derive `sender_hint` for you.
+
+Supply `sender_hint` only when the envelope `sender` you want on the wire
+differs from the identity the runtime binds to your token — a rare deployment
+where one operator credential fronts for many logical senders. In that case,
+keep `expected_sender` matching the token identity and override `sender_hint`
+explicitly:
 
 ```python
-# Bearer token — sender_hint tells the SDK which sender to use in envelopes
-auth = AuthConfig.for_bearer("tok-123", sender_hint="alice")
-assert auth.sender == "alice"
+auth = AuthConfig.for_bearer(
+    "tok-fleet",
+    sender_hint="fleet-agent-17",   # envelope .sender
+    expected_sender="fleet-agent-17",
+)
+```
 
-# Without sender_hint, auth.sender is None and you must specify sender explicitly
-auth = AuthConfig.for_bearer("tok-123")
-session.vote("p1", "approve", sender="alice")  # must specify sender
+For all normal use, prefer:
+
+```python
+# Dev: sender_hint + expected_sender both default to the agent_id.
+AuthConfig.for_dev_agent("alice")
+
+# Prod: set expected_sender; sender_hint is derived automatically.
+AuthConfig.for_bearer("tok-alice", expected_sender="alice")
 ```
 
 ## Per-operation auth overrides
@@ -126,24 +176,36 @@ Priority: **method-level > session-level > client-level**
 
 ## TLS configuration
 
-For production deployments with TLS:
+TLS 1.2+ is required in production (RFC-MACP-0006 §3) and is the SDK default
+in 0.2.0+. `secure=True` is implied unless you pass `allow_insecure=True`:
 
 ```python
+# Production — secure by default
 client = MacpClient(
     target="runtime.example.com:50051",
-    secure=True,
     root_certificates=open("ca.pem", "rb").read(),  # CA certificate
-    auth=AuthConfig.for_bearer("tok-prod-123", sender_hint="my-agent"),
+    auth=AuthConfig.for_bearer("tok-prod-123", expected_sender="my-agent"),
+)
+
+# Local dev against MACP_ALLOW_INSECURE=1 runtime — must opt in explicitly
+client = MacpClient(
+    target="127.0.0.1:50051",
+    allow_insecure=True,
+    auth=AuthConfig.for_dev_agent("my-agent"),
 )
 ```
 
-The runtime must be configured with `MACP_TLS_CERT_PATH` and `MACP_TLS_KEY_PATH`.
+Passing `secure=False` without `allow_insecure=True` raises `MacpSdkError`
+so plaintext transport can never ship accidentally. The runtime must be
+configured with `MACP_TLS_CERT_PATH` and `MACP_TLS_KEY_PATH` for TLS.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `MacpSdkError: this operation requires auth` | No auth configured | Pass `auth=` to client, session, or method |
+| `MacpSdkError: secure=False requires allow_insecure=True` | TLS default now strict (SDK ≥ 0.2.0) | Pass `allow_insecure=True` for local dev; otherwise use `secure=True` |
+| `MacpIdentityMismatchError` | Explicit `sender=` doesn't match `auth.expected_sender` | Use per-participant `auth=` with matching `expected_sender` |
 | `MacpAckError: UNAUTHENTICATED` | Token invalid or expired | Check token in runtime config |
 | `MacpAckError: FORBIDDEN` | Sender not authorized for this mode | Check `allowed_modes` in token config |
 | `MacpAckError: FORBIDDEN` on Commitment | Sender is not the session initiator | Only the initiator can commit |

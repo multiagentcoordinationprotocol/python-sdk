@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from macp.modes.decision.v1 import decision_pb2
+from macp.v1 import envelope_pb2
 
 from .auth import AuthConfig
 from .base_projection import BaseProjection
@@ -49,7 +48,7 @@ class DecisionSession(BaseSession):
         supporting_data: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = decision_pb2.ProposalPayload(
             proposal_id=proposal_id,
             option=option,
@@ -60,7 +59,7 @@ class DecisionSession(BaseSession):
             mode=self.MODE,
             message_type="Proposal",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -74,7 +73,7 @@ class DecisionSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         normalized_rec = recommendation.upper()
         if normalized_rec not in _VALID_RECOMMENDATIONS:
             raise MacpSessionError(
@@ -93,7 +92,7 @@ class DecisionSession(BaseSession):
             mode=self.MODE,
             message_type="Evaluation",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -106,7 +105,7 @@ class DecisionSession(BaseSession):
         severity: str = "medium",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         normalized_sev = severity.lower()
         if normalized_sev not in _VALID_SEVERITIES:
             raise MacpSessionError(
@@ -121,7 +120,7 @@ class DecisionSession(BaseSession):
             mode=self.MODE,
             message_type="Objection",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -134,7 +133,7 @@ class DecisionSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         normalized_vote = vote.upper()
         if normalized_vote not in _VALID_VOTES:
             raise MacpSessionError(
@@ -149,7 +148,7 @@ class DecisionSession(BaseSession):
             mode=self.MODE,
             message_type="Vote",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)

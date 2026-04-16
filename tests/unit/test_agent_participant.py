@@ -266,6 +266,8 @@ class TestFromBootstrap:
             "auth": {"agent_id": "agent-x"},
             "participants": ["agent-x", "agent-y"],
             "policy_version": "policy.strict",
+            "secure": False,
+            "allow_insecure": True,
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(bootstrap, f)
@@ -287,6 +289,8 @@ class TestFromBootstrap:
             "mode": "macp.mode.task.v1",
             "runtime_url": "localhost:50052",
             "auth": {"bearer_token": "secret-token"},
+            "secure": False,
+            "allow_insecure": True,
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(bootstrap, f)
@@ -304,6 +308,8 @@ class TestFromBootstrap:
             "session_id": "sess-env",
             "mode": "macp.mode.quorum.v1",
             "auth": {"agent_id": "agent-env"},
+            "secure": False,
+            "allow_insecure": True,
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(bootstrap, f)
@@ -329,3 +335,49 @@ class TestFromBootstrap:
         finally:
             if old is not None:
                 os.environ["MACP_BOOTSTRAP_FILE"] = old
+
+    def test_bootstrap_rejects_insecure_without_opt_in(self):
+        """secure=false without allow_insecure=true must fail (RFC-0006 §3)."""
+        import pytest
+
+        from macp_sdk.errors import MacpSdkError
+
+        bootstrap = {
+            "participant_id": "agent-x",
+            "session_id": "sess-x",
+            "mode": "macp.mode.decision.v1",
+            "runtime_url": "localhost:50051",
+            "auth": {"agent_id": "agent-x"},
+            "secure": False,
+            # allow_insecure intentionally omitted
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            with pytest.raises(MacpSdkError, match="allow_insecure=True"):
+                from_bootstrap(path)
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_propagates_expected_sender(self):
+        """auth.expected_sender (or participant_id fallback) wires through to AuthConfig."""
+        bootstrap = {
+            "participant_id": "alice",
+            "session_id": "sess-1",
+            "mode": "macp.mode.decision.v1",
+            "runtime_url": "localhost:50051",
+            "auth": {"bearer_token": "tok-alice"},
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._auth is not None
+            assert p._auth.expected_sender == "alice"
+            assert p._auth.bearer_token == "tok-alice"
+        finally:
+            os.unlink(path)

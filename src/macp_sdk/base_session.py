@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from typing import Any, ClassVar
 
+from macp.v1 import core_pb2, envelope_pb2
+
 from ._logging import logger
 from .auth import AuthConfig
 from .base_projection import BaseProjection
@@ -20,6 +22,7 @@ from .envelope import (
     new_session_id,
     serialize_message,
 )
+from .errors import MacpIdentityMismatchError
 from .validation import validate_participant_count, validate_session_id
 
 
@@ -57,18 +60,21 @@ class BaseSession(ABC):
     def _create_projection(self) -> BaseProjection:
         """Return a new projection instance for this mode."""
 
-    def _sender_for(self, sender: str | None) -> str:
+    def _sender_for(self, sender: str | None, *, auth: AuthConfig | None = None) -> str:
+        auth_cfg = auth or self.auth or self.client.auth
+        expected = auth_cfg.expected_sender if auth_cfg else None
         if sender:
+            if expected is not None and sender != expected:
+                raise MacpIdentityMismatchError(expected=expected, actual=sender)
             return sender
-        auth_cfg = self.auth or self.client.auth
         return auth_cfg.sender or "" if auth_cfg else ""
 
     def _send_and_track(
         self,
-        envelope: Any,
+        envelope: envelope_pb2.Envelope,
         *,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         logger.debug(
             "send session=%s type=%s sender=%s",
             envelope.session_id,
@@ -96,7 +102,8 @@ class BaseSession(ABC):
         context: bytes | str | Mapping[str, object] | None = None,
         roots: Iterable[Any] | None = None,
         sender: str | None = None,
-    ) -> Any:
+        auth: AuthConfig | None = None,
+    ) -> envelope_pb2.Ack:
         """Send SessionStart and begin tracking via the projection."""
         validate_participant_count(len(participants))
         payload = build_session_start_payload(
@@ -113,10 +120,10 @@ class BaseSession(ABC):
             mode=self.MODE,
             message_type="SessionStart",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
-        return self._send_and_track(envelope, auth=self.auth)
+        return self._send_and_track(envelope, auth=auth or self.auth)
 
     def commit(
         self,
@@ -128,7 +135,7 @@ class BaseSession(ABC):
         outcome_positive: bool | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         """Send Commitment to resolve the session."""
         payload = build_commitment_payload(
             action=action,
@@ -144,16 +151,16 @@ class BaseSession(ABC):
             mode=self.MODE,
             message_type="Commitment",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
 
-    def metadata(self, *, auth: AuthConfig | None = None) -> Any:
+    def metadata(self, *, auth: AuthConfig | None = None) -> core_pb2.GetSessionResponse:
         """Query session metadata from the runtime."""
         return self.client.get_session(self.session_id, auth=auth or self.auth)
 
-    def cancel(self, *, reason: str = "", auth: AuthConfig | None = None) -> Any:
+    def cancel(self, *, reason: str = "", auth: AuthConfig | None = None) -> envelope_pb2.Ack:
         """Cancel the session."""
         return self.client.cancel_session(self.session_id, reason=reason, auth=auth or self.auth)
 
