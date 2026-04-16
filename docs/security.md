@@ -16,11 +16,15 @@ MACP defines a comprehensive security model. This page covers the security guara
 ### Bearer tokens (production)
 
 ```python
-from macp_sdk import AuthConfig
+from macp_sdk import AuthConfig, MacpClient
 
-auth = AuthConfig.for_bearer("tok-abc123", sender_hint="my-agent")
-client = MacpClient(target="runtime:50051", secure=True, auth=auth)
+auth = AuthConfig.for_bearer("tok-abc123", expected_sender="my-agent")
+client = MacpClient(target="runtime:50051", auth=auth)  # secure=True by default
 ```
+
+SDK 0.2.0+ defaults `secure=True` and enforces `expected_sender` client-side,
+preventing plaintext channels and spoofed-sender envelopes from ever leaving
+the process.
 
 The runtime validates the token and maps it to a sender identity with specific permissions:
 
@@ -42,13 +46,10 @@ Sends `x-macp-agent-id` header. Requires the runtime to be started with `MACP_AL
 For agent-to-agent authentication with client certificates:
 
 ```python
-import grpc
-
 client = MacpClient(
     target="runtime:50051",
-    secure=True,
     root_certificates=open("ca.pem", "rb").read(),
-    auth=AuthConfig.for_bearer("tok-123"),
+    auth=AuthConfig.for_bearer("tok-123", expected_sender="my-agent"),
 )
 ```
 
@@ -142,7 +143,8 @@ The runtime logs security-relevant events. SDK users should be aware that these 
 
 ## Production checklist
 
-- [ ] Use TLS (`secure=True`) — never run plaintext in production
+- [ ] Use TLS (default since SDK 0.2.0) — never pass `allow_insecure=True` in prod
+- [ ] Set `expected_sender` on every `AuthConfig.for_bearer` call so sender spoofing fails fast (`MacpIdentityMismatchError`)
 - [ ] Use bearer tokens, not dev agent headers
 - [ ] Scope tokens to minimum required modes (`allowed_modes`)
 - [ ] Set `max_open_sessions` to prevent resource exhaustion

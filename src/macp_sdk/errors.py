@@ -76,6 +76,23 @@ class MacpSessionError(MacpSdkError):
     """Session-level error (wrong state, not started, already committed)."""
 
 
+class MacpIdentityMismatchError(MacpSdkError):
+    """Envelope ``sender`` does not match the auth identity's ``expected_sender``.
+
+    The runtime derives ``sender`` from authenticated identity and rejects any
+    value that does not match (RFC-MACP-0004 §4). Catching this mismatch client-side
+    surfaces a clearer error than an opaque ``UNAUTHENTICATED`` from the runtime.
+    """
+
+    def __init__(self, *, expected: str, actual: str) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"sender {actual!r} does not match auth identity {expected!r}; "
+            f"the runtime will reject this envelope as UNAUTHENTICATED"
+        )
+
+
 class MacpTimeoutError(MacpTransportError):
     """Operation timed out."""
 

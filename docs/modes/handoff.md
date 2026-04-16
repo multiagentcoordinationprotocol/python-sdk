@@ -67,7 +67,7 @@ A session becomes eligible for Commitment when:
 from macp_sdk import AuthConfig, MacpClient
 from macp_sdk.handoff import HandoffSession
 
-client = MacpClient(target="127.0.0.1:50051", secure=False, auth=AuthConfig.for_dev_agent("owner-a"))
+client = MacpClient(target="127.0.0.1:50051", allow_insecure=True, auth=AuthConfig.for_dev_agent("owner-a"))
 session = HandoffSession(client)
 session.start(
     intent="transfer service-xyz oncall to owner-b",

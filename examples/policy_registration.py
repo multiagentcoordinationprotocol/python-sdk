@@ -20,7 +20,7 @@ from macp_sdk import (
 def main() -> None:
     client = MacpClient(
         target="127.0.0.1:50051",
-        secure=False,
+        allow_insecure=True,  # local dev only; production requires TLS (RFC-0006 §3)
         auth=AuthConfig.for_dev_agent("coordinator"),
     )
     try:
@@ -79,22 +79,36 @@ def main() -> None:
 
         # Evaluations (required before voting by policy)
         session.evaluate(
-            "p1", "APPROVE", confidence=0.95, reason="risk low",
-            sender="alice", auth=AuthConfig.for_dev_agent("alice"),
+            "p1",
+            "APPROVE",
+            confidence=0.95,
+            reason="risk low",
+            sender="alice",
+            auth=AuthConfig.for_dev_agent("alice"),
         )
         session.evaluate(
-            "p1", "APPROVE", confidence=0.85, reason="tests green",
-            sender="bob", auth=AuthConfig.for_dev_agent("bob"),
+            "p1",
+            "APPROVE",
+            confidence=0.85,
+            reason="tests green",
+            sender="bob",
+            auth=AuthConfig.for_dev_agent("bob"),
         )
 
         # Votes (quorum of 2 required by policy)
         session.vote(
-            "p1", "APPROVE", reason="ship it",
-            sender="alice", auth=AuthConfig.for_dev_agent("alice"),
+            "p1",
+            "APPROVE",
+            reason="ship it",
+            sender="alice",
+            auth=AuthConfig.for_dev_agent("alice"),
         )
         session.vote(
-            "p1", "APPROVE", reason="lgtm",
-            sender="bob", auth=AuthConfig.for_dev_agent("bob"),
+            "p1",
+            "APPROVE",
+            reason="lgtm",
+            sender="bob",
+            auth=AuthConfig.for_dev_agent("bob"),
         )
 
         winner = session.projection.majority_winner()

@@ -16,7 +16,13 @@ from .envelope import (
     build_signal_payload,
     serialize_message,
 )
-from .errors import AckFailure, MacpAckError, MacpSdkError, MacpTransportError
+from .errors import (
+    AckFailure,
+    MacpAckError,
+    MacpIdentityMismatchError,
+    MacpSdkError,
+    MacpTransportError,
+)
 
 
 def _parse_ack_reasons(ack: object) -> list[str]:
@@ -157,17 +163,35 @@ class MacpStream:
 
 
 class MacpClient:
+    """gRPC client for the MACP runtime.
+
+    Transport security follows RFC-MACP-0006 §3: TLS 1.2+ is REQUIRED in
+    production, so ``secure`` defaults to ``True``. Plaintext gRPC is only
+    available via the explicit ``allow_insecure=True`` opt-in, which is
+    intended for local development against a runtime started with
+    ``MACP_ALLOW_INSECURE=1``.
+    """
+
     def __init__(
         self,
         *,
         target: str,
-        secure: bool = False,
+        secure: bool | None = None,
+        allow_insecure: bool = False,
         auth: AuthConfig | None = None,
         root_certificates: bytes | None = None,
         default_timeout: float | None = None,
         client_name: str = "macp-sdk-python",
-        client_version: str = "0.1.0",
+        client_version: str = "0.2.1",
     ) -> None:
+        if secure is None:
+            secure = not allow_insecure
+        if not secure and not allow_insecure:
+            raise MacpSdkError(
+                "secure=False requires allow_insecure=True; "
+                "TLS is required by RFC-MACP-0006 §3 in production. "
+                "For local dev only, pass allow_insecure=True."
+            )
         self.target = target
         self.secure = secure
         self.auth = auth
@@ -178,6 +202,7 @@ class MacpClient:
             creds = grpc.ssl_channel_credentials(root_certificates=root_certificates)
             self.channel = grpc.secure_channel(target, creds)
         else:
+            logger.warning("MacpClient insecure channel to %s — allowed only for local dev", target)
             self.channel = grpc.insecure_channel(target)
         self.stub = core_pb2_grpc.MACPRuntimeServiceStub(self.channel)
 
@@ -199,6 +224,39 @@ class MacpClient:
         if selected is None:
             raise MacpSdkError("this operation requires auth; pass auth= or configure client.auth")
         return selected
+
+    @staticmethod
+    def _resolve_sender(auth_cfg: AuthConfig, sender: str) -> str:
+        """Resolve and validate the envelope sender against auth.expected_sender.
+
+        Raises :class:`MacpIdentityMismatchError` when an explicit ``sender``
+        contradicts ``auth_cfg.expected_sender``. Returns the effective sender
+        string to place on the envelope (possibly the fallback from ``auth_cfg``).
+        """
+        expected = auth_cfg.expected_sender
+        if sender:
+            if expected is not None and sender != expected:
+                raise MacpIdentityMismatchError(expected=expected, actual=sender)
+            return sender
+        return auth_cfg.sender or ""
+
+    @staticmethod
+    def _failure_from_ack(ack: envelope_pb2.Ack) -> AckFailure:
+        """Build an :class:`AckFailure` from a NACK envelope, including reasons.
+
+        Used by every RPC that returns an ``Ack`` (``send``, ``cancel_session``)
+        so structured denial reasons (``POLICY_DENIED`` rule IDs, etc.) surface
+        uniformly in ``MacpAckError.reasons`` no matter which call produced
+        them.
+        """
+        error = ack.error
+        return AckFailure(
+            code=(error.code if error else "UNKNOWN"),
+            message=(error.message if error else "runtime returned nack"),
+            session_id=ack.session_id,
+            message_id=ack.message_id,
+            reasons=_parse_ack_reasons(ack),
+        )
 
     def initialize(self, *, timeout: float | None = None) -> core_pb2.InitializeResponse:
         request = core_pb2.InitializeRequest(
@@ -254,16 +312,7 @@ class MacpClient:
         if ack.duplicate:
             return ack
         if raise_on_nack and not ack.ok:
-            error = ack.error
-            reasons = _parse_ack_reasons(ack)
-            failure = AckFailure(
-                code=(error.code if error else "UNKNOWN"),
-                message=(error.message if error else "runtime returned nack"),
-                session_id=ack.session_id,
-                message_id=ack.message_id,
-                reasons=reasons,
-            )
-            raise MacpAckError(failure)
+            raise MacpAckError(self._failure_from_ack(ack))
         return ack
 
     def get_session(
@@ -312,14 +361,7 @@ class MacpClient:
             raise MacpTransportError(rpc_err.details() or str(rpc_err)) from rpc_err
         ack = response.ack
         if raise_on_nack and not ack.ok:
-            error = ack.error
-            failure = AckFailure(
-                code=(error.code if error else "UNKNOWN"),
-                message=(error.message if error else "runtime returned nack"),
-                session_id=ack.session_id,
-                message_id=ack.message_id,
-            )
-            raise MacpAckError(failure)
+            raise MacpAckError(self._failure_from_ack(ack))
         return ack
 
     def get_manifest(
@@ -541,7 +583,7 @@ class MacpClient:
             message_type="Signal",
             session_id="",
             payload=serialize_message(payload),
-            sender=sender or auth_cfg.sender or "",
+            sender=self._resolve_sender(auth_cfg, sender),
         )
         return self.send(envelope, auth=auth_cfg, timeout=timeout)
 
@@ -578,6 +620,6 @@ class MacpClient:
             message_type="Progress",
             session_id=session_id,
             payload=serialize_message(payload),
-            sender=sender or auth_cfg.sender or "",
+            sender=self._resolve_sender(auth_cfg, sender),
         )
         return self.send(envelope, auth=auth_cfg, timeout=timeout)

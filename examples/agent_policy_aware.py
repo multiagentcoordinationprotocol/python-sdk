@@ -9,11 +9,10 @@ In production, call participant.run() to enter the streaming event loop.
 
 from __future__ import annotations
 
-import json
-
-from macp.v1 import envelope_pb2
 from macp.modes.decision.v1 import decision_pb2
-from macp_sdk import AuthConfig, MacpClient
+from macp.v1 import envelope_pb2
+
+from macp_sdk import MacpClient
 from macp_sdk.agent import (
     EvaluationResult,
     Participant,
@@ -27,8 +26,8 @@ from macp_sdk.agent.types import SessionInfo
 from macp_sdk.constants import MODE_DECISION
 from macp_sdk.envelope import new_message_id, now_unix_ms, serialize_message
 
-
 # ── Policy-aware evaluation strategy ─────────────────────────────────
+
 
 def evaluate_proposal(proposal: dict, context: SessionInfo) -> EvaluationResult:
     """Evaluate a proposal, adjusting confidence threshold based on policy."""
@@ -47,15 +46,15 @@ def evaluate_proposal(proposal: dict, context: SessionInfo) -> EvaluationResult:
             confidence=base_confidence,
             reason=f"Canary deployment is low risk (policy={context.policy_version})",
         )
-    else:
-        return EvaluationResult(
-            recommendation="REVIEW",
-            confidence=base_confidence * 0.7,
-            reason=f"Non-canary deployment needs review (policy={context.policy_version})",
-        )
+    return EvaluationResult(
+        recommendation="REVIEW",
+        confidence=base_confidence * 0.7,
+        reason=f"Non-canary deployment needs review (policy={context.policy_version})",
+    )
 
 
 # ── Policy-aware voting strategy ─────────────────────────────────────
+
 
 def should_vote(projection) -> bool:
     """Vote when at least one proposal has been seen."""
@@ -70,6 +69,7 @@ def decide_vote(projection) -> VoteDecision:
 
 
 # ── Demo: simulate events for a policy-aware participant ─────────────
+
 
 def _make_envelope(
     message_type: str,

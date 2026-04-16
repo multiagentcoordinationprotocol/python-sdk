@@ -10,7 +10,7 @@ from macp_sdk.handoff import HandoffSession
 # --- Create client ---
 client = MacpClient(
     target="127.0.0.1:50051",
-    secure=False,
+    allow_insecure=True,  # local dev only; production requires TLS (RFC-0006 §3)
     auth=AuthConfig.for_dev_agent("owner-a"),
 )
 

@@ -17,6 +17,20 @@ The SDK is the middle layer: it provides typed convenience APIs for building and
     - **Orchestrator**: "commit if >50% approved and no blocking objections" — your logic, your policy
     - **Runtime**: validates the Commitment, transitions session to RESOLVED — protocol enforcement
 
+### Action-method signature conventions
+
+Every mode-helper action method follows the same call shape:
+
+```
+session.<action>(<required_ids>, *, <payload_kwargs>, sender=None, auth=None)
+```
+
+- **Required IDs are positional** — e.g. `session.vote(proposal_id, vote)`, `session.accept_task(task_id)`. These are the minimum required to identify the subject of the action.
+- **Everything else is keyword-only** after the `*` separator — payload fields (`reason`, `confidence`, `summary`, …), `sender`, and the per-call `auth` override.
+- **`sender=` and `auth=` are always the last two kwargs.** The SDK resolves the effective sender via `method > session > client` precedence and enforces the `expected_sender` guardrail from §Auth.
+
+This rule matches how `DecisionSession.vote`, `ProposalSession.propose`, `TaskSession.accept_task`, `HandoffSession.offer`, and `QuorumSession.approve` are shaped today. New helpers must follow the same pattern so call sites read predictably.
+
 ## Module map
 
 ```

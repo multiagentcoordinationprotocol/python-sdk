@@ -31,8 +31,13 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
             },
             "participants": ["agent-a", "agent-b"],
             "policy_version": "policy.default",
-            "secure": false
+            "secure": true,              // default; set false only for local dev
+            "allow_insecure": false      // required if secure=false
         }
+
+    Transport security follows RFC-MACP-0006 §3: ``secure`` defaults to
+    ``true``. Setting ``secure: false`` additionally requires
+    ``allow_insecure: true`` in the bootstrap (opt-in for local dev only).
     """
     path = bootstrap_path or os.environ.get("MACP_BOOTSTRAP_FILE")
     if not path:
@@ -45,7 +50,8 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
     session_id = str(ctx["session_id"])
     mode = str(ctx["mode"])
     runtime_url = str(ctx.get("runtime_url", "localhost:50051"))
-    secure = bool(ctx.get("secure", False))
+    secure = bool(ctx.get("secure", True))
+    allow_insecure = bool(ctx.get("allow_insecure", False))
 
     # Build auth config
     auth_data = ctx.get("auth")
@@ -53,15 +59,21 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
     if isinstance(auth_data, dict):
         bearer = auth_data.get("bearer_token")
         agent_id = auth_data.get("agent_id")
+        expected_sender = auth_data.get("expected_sender") or participant_id
         if bearer:
-            auth = AuthConfig.for_bearer(str(bearer), sender_hint=participant_id)
+            auth = AuthConfig.for_bearer(
+                str(bearer),
+                sender_hint=participant_id,
+                expected_sender=str(expected_sender),
+            )
         elif agent_id:
-            auth = AuthConfig.for_dev_agent(str(agent_id))
+            auth = AuthConfig.for_dev_agent(str(agent_id), expected_sender=str(expected_sender))
 
     # Build client
     client = MacpClient(
         target=runtime_url,
         secure=secure,
+        allow_insecure=allow_insecure,
         auth=auth,
     )
 

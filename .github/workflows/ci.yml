@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      - run: ruff check src/ tests/ examples/
+      - run: ruff format --check src/ tests/ examples/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -39,7 +39,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: pytest tests/unit/ -v --cov=macp_sdk --cov-report=term
+      # Coverage floor: 85% post-Phase-1 (watchers + proto_registry backfill).
+      # Temporarily 80 on main until those tests land — do not lower this.
+      - run: pytest tests/unit/ -v --cov=macp_sdk --cov-report=term --cov-fail-under=85
 
   build:
     runs-on: ubuntu-latest

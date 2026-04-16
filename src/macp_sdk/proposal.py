@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from macp.modes.proposal.v1 import proposal_pb2
 from macp.v1 import envelope_pb2
@@ -194,7 +193,7 @@ class ProposalSession(BaseSession):
         tags: list[str] | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = proposal_pb2.ProposalPayload(
             proposal_id=proposal_id,
             title=title,
@@ -206,7 +205,7 @@ class ProposalSession(BaseSession):
             mode=self.MODE,
             message_type="Proposal",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -221,7 +220,7 @@ class ProposalSession(BaseSession):
         details: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = proposal_pb2.CounterProposalPayload(
             proposal_id=proposal_id,
             supersedes_proposal_id=supersedes_proposal_id,
@@ -233,7 +232,7 @@ class ProposalSession(BaseSession):
             mode=self.MODE,
             message_type="CounterProposal",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -245,7 +244,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = proposal_pb2.AcceptPayload(
             proposal_id=proposal_id,
             reason=reason,
@@ -254,7 +253,7 @@ class ProposalSession(BaseSession):
             mode=self.MODE,
             message_type="Accept",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -267,7 +266,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = proposal_pb2.RejectPayload(
             proposal_id=proposal_id,
             terminal=terminal,
@@ -277,7 +276,7 @@ class ProposalSession(BaseSession):
             mode=self.MODE,
             message_type="Reject",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -289,7 +288,7 @@ class ProposalSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         if not proposal_id or not proposal_id.strip():
             raise MacpSessionError("proposal_id must be non-empty for withdraw")
         payload = proposal_pb2.WithdrawPayload(
@@ -300,7 +299,7 @@ class ProposalSession(BaseSession):
             mode=self.MODE,
             message_type="Withdraw",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)

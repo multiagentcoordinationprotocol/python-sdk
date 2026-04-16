@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from macp.modes.task.v1 import task_pb2
 from macp.v1 import envelope_pb2
@@ -225,7 +224,7 @@ class TaskSession(BaseSession):
         deadline_unix_ms: int = 0,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskRequestPayload(
             task_id=task_id,
             title=title,
@@ -238,7 +237,7 @@ class TaskSession(BaseSession):
             mode=self.MODE,
             message_type="TaskRequest",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -251,17 +250,17 @@ class TaskSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskAcceptPayload(
             task_id=task_id,
-            assignee=assignee or self._sender_for(sender),
+            assignee=assignee or self._sender_for(sender, auth=auth),
             reason=reason,
         )
         envelope = build_envelope(
             mode=self.MODE,
             message_type="TaskAccept",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -274,17 +273,17 @@ class TaskSession(BaseSession):
         reason: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskRejectPayload(
             task_id=task_id,
-            assignee=assignee or self._sender_for(sender),
+            assignee=assignee or self._sender_for(sender, auth=auth),
             reason=reason,
         )
         envelope = build_envelope(
             mode=self.MODE,
             message_type="TaskReject",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -299,7 +298,7 @@ class TaskSession(BaseSession):
         partial_output: bytes = b"",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskUpdatePayload(
             task_id=task_id,
             status=status,
@@ -311,7 +310,7 @@ class TaskSession(BaseSession):
             mode=self.MODE,
             message_type="TaskUpdate",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -325,10 +324,10 @@ class TaskSession(BaseSession):
         summary: str = "",
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskCompletePayload(
             task_id=task_id,
-            assignee=assignee or self._sender_for(sender),
+            assignee=assignee or self._sender_for(sender, auth=auth),
             output=output,
             summary=summary,
         )
@@ -336,7 +335,7 @@ class TaskSession(BaseSession):
             mode=self.MODE,
             message_type="TaskComplete",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
@@ -351,10 +350,10 @@ class TaskSession(BaseSession):
         retryable: bool = False,
         sender: str | None = None,
         auth: AuthConfig | None = None,
-    ) -> Any:
+    ) -> envelope_pb2.Ack:
         payload = task_pb2.TaskFailPayload(
             task_id=task_id,
-            assignee=assignee or self._sender_for(sender),
+            assignee=assignee or self._sender_for(sender, auth=auth),
             error_code=error_code,
             reason=reason,
             retryable=retryable,
@@ -363,7 +362,7 @@ class TaskSession(BaseSession):
             mode=self.MODE,
             message_type="TaskFail",
             session_id=self.session_id,
-            sender=self._sender_for(sender),
+            sender=self._sender_for(sender, auth=auth),
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)

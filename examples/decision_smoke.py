@@ -4,7 +4,7 @@ from macp_sdk import AuthConfig, DecisionSession, MacpClient
 def main() -> None:
     client = MacpClient(
         target="127.0.0.1:50051",
-        secure=False,
+        allow_insecure=True,  # local dev only; production requires TLS (RFC-0006 §3)
         auth=AuthConfig.for_dev_agent("coordinator"),
     )
     try:
@@ -20,12 +20,19 @@ def main() -> None:
         )
         session.propose("p1", "deploy-v2.1", rationale="canary checks passed")
         session.evaluate(
-            "p1", "APPROVE", confidence=0.95, reason="risk low",
-            sender="alice", auth=AuthConfig.for_dev_agent("alice"),
+            "p1",
+            "APPROVE",
+            confidence=0.95,
+            reason="risk low",
+            sender="alice",
+            auth=AuthConfig.for_dev_agent("alice"),
         )
         session.vote(
-            "p1", "APPROVE", reason="ship it",
-            sender="bob", auth=AuthConfig.for_dev_agent("bob"),
+            "p1",
+            "APPROVE",
+            reason="ship it",
+            sender="bob",
+            auth=AuthConfig.for_dev_agent("bob"),
         )
 
         winner = session.projection.majority_winner()

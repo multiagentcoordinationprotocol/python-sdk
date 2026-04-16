@@ -30,6 +30,7 @@ nav:
       - Error Handling & Retry: guides/error-handling.md
       - Streaming: guides/streaming.md
       - Building Orchestrators: guides/building-orchestrators.md
+      - Direct Agent Auth: guides/direct-agent-auth.md
   - Auth: auth.md
   - API Reference: api/index.md
 
