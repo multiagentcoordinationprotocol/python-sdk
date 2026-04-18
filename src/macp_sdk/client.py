@@ -190,7 +190,7 @@ class MacpClient:
         root_certificates: bytes | None = None,
         default_timeout: float | None = None,
         client_name: str = "macp-sdk-python",
-        client_version: str = "0.2.1",
+        client_version: str = "0.2.2",
     ) -> None:
         if secure is None:
             secure = not allow_insecure
