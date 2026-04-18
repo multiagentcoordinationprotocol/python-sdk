@@ -155,7 +155,7 @@ class TestDirectAgentAuthBearer:
 
                 # Confirm the runtime recorded the Bearer identity as sender.
                 meta = session.metadata().metadata
-                assert meta.initiator_sender == BEARER_SENDER
+                assert meta.initiator == BEARER_SENDER
 
                 ack = session.commit(
                     action="approved",

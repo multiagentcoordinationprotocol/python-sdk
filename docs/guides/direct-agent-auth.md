@@ -29,7 +29,7 @@ base64url ≥22 chars). Use `macp_sdk.new_session_id()` to generate one.
 ## Initiator agent
 
 The initiator owns `SessionStart`. It is the agent whose identity the
-runtime records as `session.initiator_sender`, and the only participant
+runtime records as `session.initiator`, and the only participant
 authorised to commit (unless policy delegates otherwise).
 
 ```python
@@ -60,7 +60,7 @@ client.initialize()
 
 session = DecisionSession(client, session_id=session_id, auth=auth)
 
-# 1. Unary Send(SessionStart) — the runtime binds session.initiator_sender
+# 1. Unary Send(SessionStart) — the runtime binds session.initiator
 #    to this agent's Bearer identity.
 session.start(
     intent=start_payload["intent"],

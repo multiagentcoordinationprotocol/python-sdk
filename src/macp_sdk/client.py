@@ -107,24 +107,32 @@ class MacpStream:
     def _pump_responses(self) -> None:
         try:
             for response in self._call:
-                # Support both formats:
-                #   New: StreamSessionResponse { response: { envelope | error } }
-                #   Old: StreamSessionResponse { envelope }
+                # StreamSessionResponse has envelope + error at the top level.
+                envelope = getattr(response, "envelope", None)
+                error = getattr(response, "error", None)
+
+                if error is not None and hasattr(error, "ByteSize") and error.ByteSize() > 0:
+                    for cb in self._inline_error_callbacks:
+                        cb(error)
+                    logger.warning("inline stream error: %s", error)
+                    continue
+
+                if envelope is not None and envelope.ByteSize() > 0:
+                    self._responses.put(envelope)
+                    continue
+
+                # Fallback: try a nested .response wrapper (legacy proto shape).
                 inner = getattr(response, "response", None)
                 if inner is not None and hasattr(inner, "ByteSize") and inner.ByteSize() > 0:
-                    envelope = getattr(inner, "envelope", None)
-                    error = getattr(inner, "error", None)
-                    if envelope is not None and envelope.ByteSize() > 0:
-                        self._responses.put(envelope)
-                    elif error is not None:
-                        # Inline application-level error — notify callbacks, keep stream open
+                    inner_env = getattr(inner, "envelope", None)
+                    inner_err = getattr(inner, "error", None)
+                    if inner_env is not None and inner_env.ByteSize() > 0:
+                        self._responses.put(inner_env)
+                    elif inner_err is not None:
                         for cb in self._inline_error_callbacks:
-                            cb(error)
-                        logger.warning("inline stream error: %s", error)
+                            cb(inner_err)
+                        logger.warning("inline stream error: %s", inner_err)
                         continue
-                else:
-                    # Flat format: response.envelope
-                    self._responses.put(response.envelope)
         except grpc.RpcError as exc:
             self._responses.put(exc)
         finally:
