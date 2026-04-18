@@ -99,7 +99,8 @@ class BaseSession(ABC):
         intent: str,
         participants: list[str],
         ttl_ms: int,
-        context: bytes | str | Mapping[str, object] | None = None,
+        context_id: str = "",
+        extensions: Mapping[str, bytes] | None = None,
         roots: Iterable[Any] | None = None,
         sender: str | None = None,
         auth: AuthConfig | None = None,
@@ -113,7 +114,8 @@ class BaseSession(ABC):
             mode_version=self.mode_version,
             configuration_version=self.configuration_version,
             policy_version=self.policy_version,
-            context=context,
+            context_id=context_id,
+            extensions=extensions,
             roots=roots,
         )
         envelope = build_envelope(

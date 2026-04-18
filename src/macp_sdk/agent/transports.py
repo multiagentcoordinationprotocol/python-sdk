@@ -133,16 +133,27 @@ class HttpTransportAdapter:
 
 def _envelope_to_message(envelope: Any) -> IncomingMessage:
     """Convert a protobuf Envelope to an IncomingMessage."""
+    from ..proto_registry import ProtoRegistry
+
     payload_dict: dict[str, Any] = {}
     if envelope.payload:
         try:
-            payload_dict = json.loads(envelope.payload)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            payload_dict = {"_raw_bytes": envelope.payload}
+            registry = ProtoRegistry()
+            decoded = registry.decode_known_payload(
+                envelope.mode, envelope.message_type, envelope.payload
+            )
+            payload_dict = decoded if decoded is not None else json.loads(envelope.payload)
+        except Exception:
+            try:
+                payload_dict = json.loads(envelope.payload)
+            except Exception:
+                payload_dict = {}
 
-    proposal_id: str | None = None
-    if "proposal_id" in payload_dict:
-        proposal_id = str(payload_dict["proposal_id"])
+    proposal_id: str | None = (
+        payload_dict.get("proposal_id") or payload_dict.get("proposalId") or None
+    )
+    if proposal_id is not None:
+        proposal_id = str(proposal_id)
 
     return IncomingMessage(
         message_type=envelope.message_type,
