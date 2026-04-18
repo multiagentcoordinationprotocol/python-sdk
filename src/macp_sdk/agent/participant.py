@@ -70,6 +70,48 @@ class ParticipantActions:
         """Cancel the session."""
         return self._client.cancel_session(self._session_id, reason=reason, auth=self._auth)
 
+    def start_session(
+        self,
+        intent: str,
+        participants: list[str],
+        ttl_ms: int,
+        context_id: str = "",
+        extensions: dict[str, bytes] | None = None,
+        mode_version: str | None = None,
+        configuration_version: str | None = None,
+        policy_version: str | None = None,
+    ) -> Any:
+        """Send a SessionStart envelope to open the session."""
+        from ..constants import (
+            DEFAULT_CONFIGURATION_VERSION,
+            DEFAULT_MODE_VERSION,
+            DEFAULT_POLICY_VERSION,
+        )
+        from ..envelope import (
+            build_envelope,
+            build_session_start_payload,
+            serialize_message,
+        )
+
+        payload = build_session_start_payload(
+            intent=intent,
+            participants=participants,
+            ttl_ms=ttl_ms,
+            context_id=context_id,
+            extensions=extensions,
+            mode_version=mode_version or DEFAULT_MODE_VERSION,
+            configuration_version=configuration_version or DEFAULT_CONFIGURATION_VERSION,
+            policy_version=policy_version or DEFAULT_POLICY_VERSION,
+        )
+        envelope = build_envelope(
+            mode=self._mode,
+            message_type="SessionStart",
+            session_id=self._session_id,
+            sender=self._participant_id,
+            payload=serialize_message(payload),
+        )
+        return self.send_envelope(envelope)
+
     def evaluate(
         self,
         proposal_id: str,
@@ -222,6 +264,7 @@ class Participant:
         configuration_version: str | None = None,
         policy_version: str | None = None,
         transport: TransportAdapter | None = None,
+        initiator_config: Any | None = None,
     ) -> None:
         self._participant_id = participant_id
         self._session_id = session_id
@@ -229,6 +272,7 @@ class Participant:
         self._client = client
         self._auth = auth
         self._stopped = False
+        self._initiator_config = initiator_config
 
         self._dispatcher = Dispatcher()
         self._session = SessionInfo(
@@ -365,18 +409,22 @@ class Participant:
     def run(self) -> None:
         """Enter the blocking event loop.
 
-        If a :class:`TransportAdapter` was provided, it is used to receive
-        messages.  Otherwise a gRPC ``StreamSession`` is opened.
+        If this participant is the initiator (``initiator_config`` is set),
+        emits SessionStart + kickoff before opening the stream.
 
         Dispatches received events to registered handlers until the session
         reaches a terminal state or ``stop()`` is called.
         """
         logger.info(
-            "participant %s joining session %s (mode=%s)",
+            "participant %s joining session %s (mode=%s, initiator=%s)",
             self._participant_id,
             self._session_id,
             self._mode,
+            self._initiator_config is not None,
         )
+
+        if self._initiator_config is not None:
+            self._emit_initiator_envelopes()
 
         transport = self._transport or GrpcTransportAdapter(
             self._client,
@@ -387,13 +435,41 @@ class Participant:
             for message in transport.start():
                 if self._stopped:
                     break
-                # If the transport yields raw envelopes (gRPC), process as envelope
                 if message.raw is not None:
                     self._process_envelope(message.raw)
                 else:
                     self._process_message(message)
         finally:
             transport.stop()
+
+    def _emit_initiator_envelopes(self) -> None:
+        """Emit SessionStart + kickoff envelope as the initiator."""
+        cfg = self._initiator_config
+        if cfg is None:
+            return
+
+        self._actions.start_session(
+            intent=cfg.intent,
+            participants=cfg.participants,
+            ttl_ms=cfg.ttl_ms,
+            context_id=cfg.context_id,
+            mode_version=cfg.mode_version,
+            configuration_version=cfg.configuration_version,
+            policy_version=cfg.policy_version,
+        )
+        logger.info("SessionStart emitted (session=%s)", self._session_id)
+
+        if cfg.kickoff_message_type == "Proposal":
+            payload = cfg.kickoff_payload or {}
+            proposal_id = str(
+                payload.get("proposalId")
+                or payload.get("proposal_id")
+                or f"{self._session_id}-kickoff"
+            )
+            option = str(payload.get("option", "decide"))
+            rationale = str(payload.get("rationale", ""))
+            self._actions.propose(proposal_id, option, rationale=rationale)
+            logger.info("Kickoff proposal emitted (proposalId=%s)", proposal_id)
 
     def process_event(self, envelope: Any) -> None:
         """Manually process a single envelope (for testing or polling transports)."""

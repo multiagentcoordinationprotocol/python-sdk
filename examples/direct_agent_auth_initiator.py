@@ -51,7 +51,7 @@ def main() -> None:
         init = client.initialize()
         print(f"connected: {init.runtime_info.name}")
 
-        # ── 1. SessionStart (unary) — runtime binds initiator_sender to us.
+        # ── 1. SessionStart (unary) — runtime binds initiator to us.
         session = DecisionSession(client, session_id=session_id, auth=auth)
         ack = session.start(
             intent="pick a deployment plan",

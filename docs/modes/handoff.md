@@ -73,7 +73,7 @@ session.start(
     intent="transfer service-xyz oncall to owner-b",
     participants=["owner-a", "owner-b"],
     ttl_ms=60_000,
-    context=b'{"service": "service-xyz", "current_state": "healthy"}',
+    context_id="service-xyz",
 )
 
 # Owner-A offers the handoff

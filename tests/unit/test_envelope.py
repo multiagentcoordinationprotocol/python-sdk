@@ -7,7 +7,6 @@ from macp_sdk.envelope import (
     build_root,
     build_session_start_payload,
     build_signal_payload,
-    encode_context,
     new_commitment_id,
     new_message_id,
     new_session_id,
@@ -25,21 +24,6 @@ class TestIdGenerators:
 
     def test_commitment_id_unique(self):
         assert new_commitment_id() != new_commitment_id()
-
-
-class TestEncodeContext:
-    def test_none(self):
-        assert encode_context(None) == b""
-
-    def test_bytes(self):
-        assert encode_context(b"raw") == b"raw"
-
-    def test_str(self):
-        assert encode_context("hello") == b"hello"
-
-    def test_dict(self):
-        result = encode_context({"key": "val"})
-        assert b'"key"' in result
 
 
 class TestBuildRoot:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass, field
+from typing import Any
 
 from ..auth import AuthConfig
 from ..client import MacpClient
@@ -9,67 +11,77 @@ from ..constants import DEFAULT_POLICY_VERSION
 from .participant import Participant
 
 
+@dataclass
+class InitiatorConfig:
+    """Configuration for the initiator agent's SessionStart + kickoff."""
+
+    intent: str
+    participants: list[str]
+    ttl_ms: int
+    context_id: str = ""
+    roots: list[dict[str, str]] | None = None
+    mode_version: str | None = None
+    configuration_version: str | None = None
+    policy_version: str | None = None
+    kickoff_message_type: str | None = None
+    kickoff_payload: dict[str, Any] = field(default_factory=dict)
+
+
 def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
     """Create a Participant from a bootstrap context file.
 
-    The bootstrap file is a JSON document produced by the MACP hosting
-    infrastructure containing the information needed to connect and
-    participate in a session.
-
-    If ``bootstrap_path`` is not provided, the ``MACP_BOOTSTRAP_FILE``
-    environment variable is used.
-
-    Expected bootstrap JSON structure::
+    Reads the flat bootstrap format produced by the examples-service::
 
         {
             "participant_id": "...",
             "session_id": "...",
             "mode": "macp.mode.decision.v1",
             "runtime_url": "localhost:50051",
-            "auth": {
-                "bearer_token": "...",   // or "agent_id": "..."
-            },
+            "auth_token": "...",
             "participants": ["agent-a", "agent-b"],
-            "policy_version": "policy.default",
-            "secure": true,              // default; set false only for local dev
-            "allow_insecure": false      // required if secure=false
+            "secure": false,
+            "allow_insecure": true,
+            "initiator": { ... }
         }
 
-    Transport security follows RFC-MACP-0006 §3: ``secure`` defaults to
-    ``true``. Setting ``secure: false`` additionally requires
-    ``allow_insecure: true`` in the bootstrap (opt-in for local dev only).
+    Also accepts ``auth.bearer_token`` for backwards compatibility.
     """
     path = bootstrap_path or os.environ.get("MACP_BOOTSTRAP_FILE")
     if not path:
         raise ValueError("No bootstrap path provided and MACP_BOOTSTRAP_FILE not set")
 
     with open(path) as f:
-        ctx: dict[str, object] = json.load(f)
+        ctx: dict[str, Any] = json.load(f)
 
     participant_id = str(ctx["participant_id"])
     session_id = str(ctx["session_id"])
     mode = str(ctx["mode"])
-    runtime_url = str(ctx.get("runtime_url", "localhost:50051"))
+    runtime_url = str(ctx.get("runtime_url") or ctx.get("runtime_address") or "localhost:50051")
     secure = bool(ctx.get("secure", True))
     allow_insecure = bool(ctx.get("allow_insecure", False))
 
-    # Build auth config
-    auth_data = ctx.get("auth")
     auth: AuthConfig | None = None
-    if isinstance(auth_data, dict):
-        bearer = auth_data.get("bearer_token")
-        agent_id = auth_data.get("agent_id")
-        expected_sender = auth_data.get("expected_sender") or participant_id
-        if bearer:
-            auth = AuthConfig.for_bearer(
-                str(bearer),
-                sender_hint=participant_id,
-                expected_sender=str(expected_sender),
-            )
-        elif agent_id:
-            auth = AuthConfig.for_dev_agent(str(agent_id), expected_sender=str(expected_sender))
+    auth_token = ctx.get("auth_token")
+    agent_id = ctx.get("agent_id")
+    auth_data = ctx.get("auth")
 
-    # Build client
+    if auth_token:
+        auth = AuthConfig.for_bearer(
+            str(auth_token),
+            sender_hint=participant_id,
+            expected_sender=participant_id,
+        )
+    elif isinstance(auth_data, dict) and auth_data.get("bearer_token"):
+        auth = AuthConfig.for_bearer(
+            str(auth_data["bearer_token"]),
+            sender_hint=participant_id,
+            expected_sender=str(auth_data.get("expected_sender") or participant_id),
+        )
+    elif agent_id:
+        auth = AuthConfig.for_dev_agent(str(agent_id), expected_sender=participant_id)
+    elif isinstance(auth_data, dict) and auth_data.get("agent_id"):
+        auth = AuthConfig.for_dev_agent(str(auth_data["agent_id"]), expected_sender=participant_id)
+
     client = MacpClient(
         target=runtime_url,
         secure=secure,
@@ -77,15 +89,42 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
         auth=auth,
     )
 
-    # Extract optional fields
     raw_participants = ctx.get("participants")
-    participants: list[str] = []
-    if isinstance(raw_participants, list):
-        participants = [str(p) for p in raw_participants]
+    participants: list[str] = (
+        [str(p) for p in raw_participants] if isinstance(raw_participants, list) else []
+    )
 
     mode_version = ctx.get("mode_version")
     configuration_version = ctx.get("configuration_version")
     policy_version = ctx.get("policy_version")
+
+    initiator_config: InitiatorConfig | None = None
+    initiator_data = ctx.get("initiator")
+    if isinstance(initiator_data, dict):
+        ss = initiator_data.get("session_start", {})
+        kickoff = initiator_data.get("kickoff")
+
+        def _str_or(key: str, fallback: object) -> str | None:
+            """Pick value from session_start, then fallback, coercing to str."""
+            val = ss.get(key)
+            if val is not None:
+                return str(val)
+            return str(fallback) if fallback else None
+
+        initiator_config = InitiatorConfig(
+            intent=str(ss.get("intent", "")),
+            participants=[str(p) for p in ss.get("participants", participants)],
+            ttl_ms=int(ss.get("ttl_ms", 300000)),
+            context_id=str(ss.get("context_id", "")),
+            roots=ss.get("roots"),
+            mode_version=_str_or("mode_version", mode_version),
+            configuration_version=_str_or("configuration_version", configuration_version),
+            policy_version=_str_or("policy_version", policy_version),
+            kickoff_message_type=(
+                str(kickoff["message_type"]) if kickoff and "message_type" in kickoff else None
+            ),
+            kickoff_payload=kickoff.get("payload", {}) if kickoff else {},
+        )
 
     return Participant(
         participant_id=participant_id,
@@ -97,4 +136,5 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
         mode_version=str(mode_version) if mode_version else None,
         configuration_version=str(configuration_version) if configuration_version else None,
         policy_version=str(policy_version) if policy_version else DEFAULT_POLICY_VERSION,
+        initiator_config=initiator_config,
     )

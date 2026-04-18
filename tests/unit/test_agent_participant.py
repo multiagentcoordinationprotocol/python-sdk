@@ -381,3 +381,126 @@ class TestFromBootstrap:
             assert p._auth.bearer_token == "tok-alice"
         finally:
             os.unlink(path)
+
+    def test_bootstrap_flat_auth_token(self):
+        """Flat ``auth_token`` field (new examples-service format)."""
+        bootstrap = {
+            "participant_id": "agent-flat",
+            "session_id": "sess-flat",
+            "mode": "macp.mode.decision.v1",
+            "runtime_url": "localhost:50051",
+            "auth_token": "tok-flat-123",
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._auth is not None
+            assert p._auth.bearer_token == "tok-flat-123"
+            assert p._auth.expected_sender == "agent-flat"
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_flat_agent_id(self):
+        """Flat ``agent_id`` field for dev auth."""
+        bootstrap = {
+            "participant_id": "dev-1",
+            "session_id": "sess-dev",
+            "mode": "macp.mode.decision.v1",
+            "agent_id": "dev-1",
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._auth is not None
+            assert p._auth.agent_id == "dev-1"
+            assert p._auth.expected_sender == "dev-1"
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_runtime_address_alias(self):
+        """``runtime_address`` is accepted as an alias for ``runtime_url``."""
+        bootstrap = {
+            "participant_id": "agent-addr",
+            "session_id": "sess-addr",
+            "mode": "macp.mode.decision.v1",
+            "runtime_address": "runtime.local:50052",
+            "auth": {"agent_id": "agent-addr"},
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._client.target == "runtime.local:50052"
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_with_initiator_config(self):
+        """Bootstrap with ``initiator`` block populates InitiatorConfig."""
+        bootstrap = {
+            "participant_id": "coord",
+            "session_id": "sess-init",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "coord"},
+            "participants": ["coord", "alice"],
+            "secure": False,
+            "allow_insecure": True,
+            "initiator": {
+                "session_start": {
+                    "intent": "pick a plan",
+                    "participants": ["coord", "alice", "bob"],
+                    "ttl_ms": 120000,
+                },
+                "kickoff": {
+                    "message_type": "Proposal",
+                    "payload": {
+                        "proposal_id": "p1",
+                        "option": "deploy-v3",
+                        "rationale": "tests green",
+                    },
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            cfg = p._initiator_config
+            assert cfg is not None
+            assert cfg.intent == "pick a plan"
+            assert cfg.participants == ["coord", "alice", "bob"]
+            assert cfg.ttl_ms == 120000
+            assert cfg.kickoff_message_type == "Proposal"
+            assert cfg.kickoff_payload["proposal_id"] == "p1"
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_without_initiator_has_no_config(self):
+        """Non-initiator bootstrap has ``initiator_config=None``."""
+        bootstrap = {
+            "participant_id": "alice",
+            "session_id": "sess-non",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "alice"},
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._initiator_config is None
+        finally:
+            os.unlink(path)

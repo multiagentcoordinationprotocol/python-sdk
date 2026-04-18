@@ -25,10 +25,9 @@ classifiers = [
 dependencies = [
   "grpcio>=1.74.0",
   "protobuf>=5.27.0",
-  # Tested against 0.1.x; narrow the upper bound so a hypothetical 0.2.0
-  # proto release doesn't silently land without the conformance suite
-  # being re-run. See docs/contributing.md "Bumping macp-proto".
-  "macp-proto>=0.1.0,<0.2.0",
+  # Requires 0.1.1+ for context_id / extensions fields on SessionStartPayload.
+  # See docs/contributing.md "Bumping macp-proto".
+  "macp-proto>=0.1.1,<0.2.0",
 ]
 
 [project.optional-dependencies]

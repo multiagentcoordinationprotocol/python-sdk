@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import time
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
@@ -47,16 +46,6 @@ def now_unix_ms() -> int:
     return int(time.time() * 1000)
 
 
-def encode_context(context: bytes | str | Mapping[str, object] | None) -> bytes:
-    if context is None:
-        return b""
-    if isinstance(context, bytes):
-        return context
-    if isinstance(context, str):
-        return context.encode("utf-8")
-    return json.dumps(context).encode("utf-8")
-
-
 def build_root(uri: str, name: str = "") -> core_pb2.Root:
     return core_pb2.Root(uri=uri, name=name)
 
@@ -69,7 +58,8 @@ def build_session_start_payload(
     mode_version: str = DEFAULT_MODE_VERSION,
     configuration_version: str = DEFAULT_CONFIGURATION_VERSION,
     policy_version: str = DEFAULT_POLICY_VERSION,
-    context: bytes | str | Mapping[str, object] | None = None,
+    context_id: str = "",
+    extensions: Mapping[str, bytes] | None = None,
     roots: Iterable[core_pb2.Root] | None = None,
 ) -> core_pb2.SessionStartPayload:
     return core_pb2.SessionStartPayload(
@@ -79,7 +69,8 @@ def build_session_start_payload(
         configuration_version=configuration_version,
         policy_version=policy_version,
         ttl_ms=ttl_ms,
-        context=encode_context(context),
+        context_id=context_id,
+        extensions=dict(extensions) if extensions else {},
         roots=list(roots or []),
     )
 
