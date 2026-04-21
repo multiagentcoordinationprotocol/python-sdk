@@ -127,5 +127,5 @@ Business logic — voting rules, AI decision heuristics, policy enforcement — 
 ## Known runtime limitations
 
 - `GetSession` returns metadata only (not mode state/transcript) — hence the local projection pattern
-- `StreamSession` has no late-attach handshake for already-running sessions
+- `StreamSession` is scoped to one session per stream; use `MacpStream.send_subscribe(session_id)` (RFC-MACP-0006-A1, since SDK 0.2.3 / `macp-proto 0.1.2`) to replay accepted history before live broadcast
 - Business policy (majority, quorum, veto) belongs in your orchestrator/policy layer

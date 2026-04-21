@@ -99,6 +99,63 @@ class TestGrpcTransportAdapter:
         assert messages[1].message_type == "Vote"
         mock_stream.close.assert_called_once()
 
+    def test_subscribe_sent_on_start(self):
+        """RFC-MACP-0006-A1: the adapter must subscribe to the target
+        session before iterating responses so non-initiator agents get
+        SessionStart + Proposal replayed regardless of connection order.
+        """
+        mock_client = MagicMock()
+        mock_stream = MagicMock()
+        mock_stream.responses.return_value = iter([])
+        mock_client.open_stream.return_value = mock_stream
+
+        adapter = GrpcTransportAdapter(mock_client, "target-session")
+        list(adapter.start())
+
+        mock_stream.send_subscribe.assert_called_once_with("target-session")
+
+    def test_subscribe_precedes_response_iteration(self):
+        """send_subscribe must be invoked before ``responses`` is consumed,
+        otherwise the runtime won't replay history onto this stream."""
+        mock_client = MagicMock()
+        mock_stream = MagicMock()
+        call_order: list[str] = []
+
+        mock_stream.send_subscribe.side_effect = lambda *a, **kw: call_order.append("subscribe")
+
+        def _responses_factory(*_a, **_kw):
+            call_order.append("responses")
+            return iter([])
+
+        mock_stream.responses.side_effect = _responses_factory
+        mock_client.open_stream.return_value = mock_stream
+
+        adapter = GrpcTransportAdapter(mock_client, "s-order")
+        list(adapter.start())
+
+        assert call_order == ["subscribe", "responses"]
+
+    def test_replayed_envelopes_yielded_after_subscribe(self):
+        """End-to-end adapter contract: after ``send_subscribe`` the stream
+        emits replayed envelopes (SessionStart + Proposal) and the adapter
+        passes them through — this is the reason non-initiator agents see
+        history they would otherwise miss."""
+        mock_client = MagicMock()
+        mock_stream = MagicMock()
+
+        replayed = [
+            _make_envelope(session_id="late", message_type="SessionStart"),
+            _make_envelope(session_id="late", message_type="Proposal"),
+        ]
+        mock_stream.responses.return_value = iter(replayed)
+        mock_client.open_stream.return_value = mock_stream
+
+        adapter = GrpcTransportAdapter(mock_client, "late")
+        messages = list(adapter.start())
+
+        mock_stream.send_subscribe.assert_called_once_with("late")
+        assert [m.message_type for m in messages] == ["SessionStart", "Proposal"]
+
     def test_stop_closes_stream(self):
         mock_client = MagicMock()
         mock_stream = MagicMock()

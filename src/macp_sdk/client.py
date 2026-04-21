@@ -101,8 +101,12 @@ class MacpStream:
             item = self._requests.get()
             if item is self._END:
                 return
-            assert isinstance(item, envelope_pb2.Envelope)
-            yield core_pb2.StreamSessionRequest(envelope=item)
+            # RFC-MACP-0006-A1: support both envelope sends and subscribe frames
+            if isinstance(item, core_pb2.StreamSessionRequest):
+                yield item
+            else:
+                assert isinstance(item, envelope_pb2.Envelope)
+                yield core_pb2.StreamSessionRequest(envelope=item)
 
     def _pump_responses(self) -> None:
         try:
@@ -147,6 +151,19 @@ class MacpStream:
             raise MacpSdkError("stream is already closed")
         self._requests.put(envelope)
 
+    def send_subscribe(self, session_id: str, after_sequence: int = 0) -> None:
+        """RFC-MACP-0006-A1: Send a subscribe-only frame to receive session
+        history + live broadcast. The runtime replays accepted envelopes from
+        ``after_sequence`` onwards, then continues with live broadcast.
+        """
+        if self._closed:
+            raise MacpSdkError("stream is already closed")
+        req = core_pb2.StreamSessionRequest(
+            subscribe_session_id=session_id,
+            after_sequence=after_sequence,
+        )
+        self._requests.put(req)
+
     def read(self, timeout: float | None = None) -> envelope_pb2.Envelope | None:
         item = self._responses.get(timeout=timeout)
         if item is self._END:
@@ -190,7 +207,7 @@ class MacpClient:
         root_certificates: bytes | None = None,
         default_timeout: float | None = None,
         client_name: str = "macp-sdk-python",
-        client_version: str = "0.2.2",
+        client_version: str = "0.2.3",
     ) -> None:
         if secure is None:
             secure = not allow_insecure
