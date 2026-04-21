@@ -53,6 +53,12 @@ class GrpcTransportAdapter:
         """Open a stream and yield messages for the target session."""
         self._stream = self._client.open_stream(auth=self._auth, timeout=self._timeout)
         try:
+            # RFC-MACP-0006-A1: Subscribe to the session with history replay.
+            # The runtime replays accepted envelopes then switches to live
+            # broadcast, ensuring non-initiator agents receive SessionStart +
+            # Proposal regardless of spawn order or connection timing.
+            self._stream.send_subscribe(self._session_id)
+
             for envelope in self._stream.responses():
                 if self._stopped:
                     break

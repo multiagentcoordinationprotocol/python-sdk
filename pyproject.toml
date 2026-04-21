@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "macp-sdk-python"
-version = "0.2.2"
+version = "0.2.3"
 description = "Python SDK for the MACP Rust runtime"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,9 +25,12 @@ classifiers = [
 dependencies = [
   "grpcio>=1.74.0",
   "protobuf>=5.27.0",
-  # Requires 0.1.1+ for context_id / extensions fields on SessionStartPayload.
-  # See docs/contributing.md "Bumping macp-proto".
-  "macp-proto>=0.1.1,<0.2.0",
+  # Requires 0.1.2+ for the RFC-MACP-0006-A1 subscribe_session_id /
+  # after_sequence fields on StreamSessionRequest (used by MacpStream
+  # .send_subscribe and the gRPC agent transport adapter). 0.1.1 is
+  # the earlier baseline for the context_id / extensions fields on
+  # SessionStartPayload. See docs/contributing.md "Bumping macp-proto".
+  "macp-proto>=0.1.2,<0.2.0",
 ]
 
 [project.optional-dependencies]

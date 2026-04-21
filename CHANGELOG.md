@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.3 (unreleased)
+
+Streaming-path uplift: non-initiator agents no longer miss
+``SessionStart`` / early ``Proposal`` envelopes when their stream
+opens after the initiator has already published them.
+
+### Added
+
+- **``MacpStream.send_subscribe(session_id, after_sequence=0)``** —
+  RFC-MACP-0006-A1 subscribe-only frame. The runtime replays accepted
+  session envelopes from ``after_sequence`` onwards then switches to
+  live broadcast, removing the previous late-attach limitation
+  documented in ``docs/guides/streaming.md``.
+- **``GrpcTransportAdapter``** now invokes ``send_subscribe`` as the
+  first frame on every stream, so ``Participant`` / ``from_bootstrap``
+  agents receive the full session history without any caller changes.
+- ``tests/unit/test_client_stream.py`` (7 tests) covering the
+  subscribe frame, envelope multiplexing through ``_request_iter``,
+  proto serialisation, and closed-stream guards.
+- ``tests/integration/test_subscribe_replay.py`` (2 tests) covering
+  the late-joiner replay path and the ``after_sequence`` skip path.
+- ``tests/unit/test_agent_transports.py`` — two new assertions that
+  verify ``GrpcTransportAdapter`` subscribes before consuming
+  responses.
+
+### Changed
+
+- **``macp-proto`` pin widened** to ``>=0.1.2,<0.2.0``. 0.1.2 is the
+  first release that exposes ``subscribe_session_id`` /
+  ``after_sequence`` on ``StreamSessionRequest``; the subscribe path
+  is a runtime ``ValueError`` against older bindings.
+- Streaming guide documents the subscribe frame and removes the
+  "No late-attach handshake" known-limitations bullet.
+
 ## 0.2.1 (unreleased)
 
 Quality-uplift patch release (see `plans/code-quality-uplift.md`).

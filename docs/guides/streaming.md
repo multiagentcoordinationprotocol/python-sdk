@@ -49,9 +49,47 @@ stream.close()
 `MacpStream` uses a background thread and queue-based message pump:
 
 - `send()` puts envelopes in an outgoing queue
+- `send_subscribe(session_id, after_sequence=0)` enqueues a *subscribe-only*
+  frame (RFC-MACP-0006-A1) — see [Session subscription + replay](#session-subscription--replay)
 - A background thread reads from the gRPC stream and puts responses in an incoming queue
 - `read()` and `responses()` pull from the incoming queue
 - `close()` signals the background thread to stop
+
+### Session subscription + replay
+
+Per **RFC-MACP-0006-A1**, a `StreamSessionRequest` can carry *either* an
+envelope *or* a subscribe-only frame with `subscribe_session_id` (and
+optional `after_sequence`). When the runtime receives a subscribe frame:
+
+1. It replays every accepted envelope for the session, starting from
+   `after_sequence` (0 = from the very first envelope), in acceptance
+   order.
+2. It then switches the stream to live broadcast.
+
+This is how a non-initiator agent that connects *after* the initiator
+has already sent `SessionStart` + the first `Proposal` still receives
+both envelopes. `GrpcTransportAdapter` (in
+`macp_sdk.agent.transports`) calls `send_subscribe` automatically right
+after opening the stream, so participants built on top of the agent
+framework get the correct behaviour for free — regardless of spawn
+order or connection timing.
+
+```python
+# Late-joining observer (non-initiator)
+stream = client.open_stream()
+stream.send_subscribe("sess-xyz")               # replay from start, then live
+for envelope in stream.responses(timeout=5.0):
+    ...
+
+# Reconnecting observer that already saw envelopes up to sequence 17
+stream = client.open_stream()
+stream.send_subscribe("sess-xyz", after_sequence=17)  # resume from 18 onward
+```
+
+Subscribe-only frames do not carry a sender envelope and leave
+`envelope` empty on the request. The caller must still be
+authenticated as a declared participant (or observer identity) for the
+session.
 
 ### Session helpers + streaming
 
@@ -93,6 +131,9 @@ for event in client.watch_roots(timeout=60.0):
 
 ## Known limitations
 
-- **No late-attach handshake**: `StreamSession` does not support joining an already-running session mid-flight. You can only observe envelopes that are accepted after the stream is opened.
 - **Single session per stream**: Each stream is scoped to one session. Open multiple streams for multiple sessions.
 - **Background thread**: `MacpStream` uses a daemon thread. Ensure you call `close()` for clean shutdown, or use the client as a context manager.
+
+> Late attach *is* supported since SDK 0.2.3 / `macp-proto 0.1.2` via
+> the subscribe frame described above. Earlier versions only saw
+> envelopes accepted after the stream was opened.

@@ -97,7 +97,7 @@ proj.majority_winner()     # "p1"
 
 ### Important: projections are local
 
-Projections only see envelopes **sent through this session helper instance**. If multiple SDK instances participate in the same session, each has its own partial view. For a complete view, use `StreamSession` to observe all accepted envelopes.
+Projections only see envelopes **sent through this session helper instance**. If multiple SDK instances participate in the same session, each has its own partial view. For a complete view, use `StreamSession` — and call `MacpStream.send_subscribe(session_id)` right after opening, so the runtime replays accepted history (RFC-MACP-0006-A1) before switching to live broadcast. `GrpcTransportAdapter` does this automatically for agents built on the `Participant` framework.
 
 ## Client → Runtime interaction
 
