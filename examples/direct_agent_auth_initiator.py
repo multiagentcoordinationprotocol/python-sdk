@@ -13,7 +13,7 @@ In production, the orchestrator hands the agent a bootstrap JSON file; for
 this example we inline the values so you can run it against a local
 runtime started with::
 
-    MACP_ALLOW_INSECURE=1 MACP_ALLOW_DEV_SENDER_HEADER=1 cargo run
+    MACP_ALLOW_INSECURE=1 cargo run
 
 See ``examples/direct_agent_auth_observer.py`` for the non-initiator side.
 """

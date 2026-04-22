@@ -107,9 +107,13 @@ For local development against the runtime:
 
 ```bash
 export MACP_ALLOW_INSECURE=1
-export MACP_ALLOW_DEV_SENDER_HEADER=1
 cargo run   # in the runtime repo
 ```
+
+SDK ≥ 0.2.4 drives dev-agent auth over the standard `Authorization:
+Bearer` header (runtime's `dev_authenticate` fallback), so the old
+`MACP_ALLOW_DEV_SENDER_HEADER=1` flag is no longer required and is
+rejected on runtime ≥ 0.4.0 anyway.
 
 ## Documentation
 
@@ -126,6 +130,8 @@ Business logic — voting rules, AI decision heuristics, policy enforcement — 
 
 ## Known runtime limitations
 
-- `GetSession` returns metadata only (not mode state/transcript) — hence the local projection pattern
+- `GetSession` returns metadata only (not mode state/transcript) — hence the local projection pattern; use `StreamSession` + `send_subscribe` for the full transcript
 - `StreamSession` is scoped to one session per stream; use `MacpStream.send_subscribe(session_id)` (RFC-MACP-0006-A1, since SDK 0.2.3 / `macp-proto 0.1.2`) to replay accepted history before live broadcast
+- For cross-session observability, use `MacpClient.list_sessions()` and `SessionWatcher` (SDK 0.2.4) to enumerate active sessions and stream `CREATED` / `RESOLVED` / `EXPIRED` lifecycle events
+- `ListRoots` currently returns an empty list and `WatchRoots` idles — the runtime does not yet populate roots
 - Business policy (majority, quorum, veto) belongs in your orchestrator/policy layer

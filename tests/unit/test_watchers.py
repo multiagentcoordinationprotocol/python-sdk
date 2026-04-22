@@ -22,6 +22,8 @@ from macp_sdk.watchers import (
     PolicyChange,
     PolicyWatcher,
     RootsWatcher,
+    SessionLifecycleWatcher,
+    SessionWatcher,
     SignalWatcher,
 )
 
@@ -169,3 +171,25 @@ class TestPolicyWatcher:
         (only,) = list(watcher.changes())
         assert only.descriptors == []
         assert only.observed_at_unix_ms == 0
+
+
+class TestSessionLifecycleWatcherAlias:
+    """Parity with typescript-sdk's SessionLifecycleWatcher export.
+
+    Both names resolve to the same implementation; SessionWatcher is the
+    deprecated alias slated for removal in 0.4.0.
+    """
+
+    def test_alias_is_subclass_of_session_watcher(self):
+        assert issubclass(SessionLifecycleWatcher, SessionWatcher)
+
+    def test_alias_instance_is_also_a_session_watcher(self):
+        client = MagicMock()
+        watcher = SessionLifecycleWatcher(client)
+        assert isinstance(watcher, SessionWatcher)
+
+    def test_alias_exported_from_package_root(self):
+        import macp_sdk
+
+        assert hasattr(macp_sdk, "SessionLifecycleWatcher")
+        assert macp_sdk.SessionLifecycleWatcher is SessionLifecycleWatcher

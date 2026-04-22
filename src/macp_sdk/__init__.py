@@ -100,6 +100,9 @@ from .watchers import (
     PolicyChange,
     PolicyWatcher,
     RootsWatcher,
+    SessionLifecycle,
+    SessionLifecycleWatcher,
+    SessionWatcher,
     SignalWatcher,
 )
 
@@ -169,6 +172,9 @@ __all__ = [
     "RejectionRules",
     "RetryPolicy",
     "RootsWatcher",
+    "SessionLifecycle",
+    "SessionLifecycleWatcher",
+    "SessionWatcher",
     "SignalWatcher",
     "TaskAssignmentRules",
     "TaskCompletionRules",

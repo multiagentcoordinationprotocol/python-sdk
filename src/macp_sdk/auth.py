@@ -31,8 +31,26 @@ class AuthConfig:
 
     @classmethod
     def for_dev_agent(cls, agent_id: str, *, expected_sender: str | None = None) -> AuthConfig:
+        """Build an AuthConfig for local development without a real token.
+
+        Emits ``Authorization: Bearer <agent_id>``. The runtime's
+        ``dev_authenticate`` fallback (``runtime/src/security.rs:91``)
+        binds the bearer token value verbatim as the authenticated
+        sender, so passing the raw agent id keeps participant lists
+        like ``["coordinator", "alice"]`` working unchanged.
+
+        Runtime ≥ 0.4.0 **removed** the ``x-macp-agent-id`` header path
+        (``dev_mode_rejects_dev_sender_header`` test in ``security.rs``),
+        so earlier SDK versions that relied on
+        ``MACP_ALLOW_DEV_SENDER_HEADER=1`` no longer authenticate. This
+        Bearer-based dev auth replaces that path — no runtime env flag
+        is required.
+
+        For production deployments issue real tokens via the auth
+        resolver chain and use :meth:`for_bearer` directly.
+        """
         return cls(
-            agent_id=agent_id,
+            bearer_token=agent_id,
             sender_hint=agent_id,
             expected_sender=expected_sender or agent_id,
         )
@@ -69,6 +87,9 @@ class AuthConfig:
         headers: list[tuple[str, str]] = []
         if self.bearer_token:
             headers.append(("authorization", f"Bearer {self.bearer_token}"))
-        if self.agent_id:
-            headers.append(("x-macp-agent-id", self.agent_id))
+        # Note: the legacy ``x-macp-agent-id`` header was ignored by the
+        # runtime as of v0.4.0 (RFC-MACP-0006 §3 tightening). Callers
+        # constructing ``AuthConfig(agent_id=...)`` directly must now
+        # supply a Bearer token instead — see :meth:`for_dev_agent` for
+        # the supported dev-mode path.
         return headers

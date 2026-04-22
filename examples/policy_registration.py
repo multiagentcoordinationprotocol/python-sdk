@@ -2,7 +2,7 @@
 
 Requires a running MACP Rust runtime on localhost:50051.
 Start the runtime with:
-    MACP_ALLOW_INSECURE=1 MACP_ALLOW_DEV_SENDER_HEADER=1 cargo run
+    MACP_ALLOW_INSECURE=1 cargo run
 """
 
 from macp_sdk import (

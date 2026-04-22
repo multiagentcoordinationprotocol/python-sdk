@@ -127,9 +127,14 @@ class TestMetadataPassThrough:
         assert ("authorization", "Bearer tok-1") in client._metadata()
 
     def test_dev_agent_metadata(self):
+        """Runtime v0.4.0+ rejects the legacy ``x-macp-agent-id`` header, so
+        ``for_dev_agent`` now rides the Bearer header with the agent id
+        as the raw token value. ``dev_authenticate`` on the runtime
+        binds that token verbatim as the sender."""
         auth = AuthConfig.for_dev_agent("alice")
         client = MacpClient(target="localhost:0", allow_insecure=True, auth=auth)
-        assert ("x-macp-agent-id", "alice") in client._metadata()
+        assert ("authorization", "Bearer alice") in client._metadata()
+        assert not any(key == "x-macp-agent-id" for key, _ in client._metadata())
 
 
 class TestSendDuplicateIsIdempotentSuccess:

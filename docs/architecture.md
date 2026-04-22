@@ -107,12 +107,15 @@ Projections only see envelopes **sent through this session helper instance**. If
 │             │ ───── Send ──────────→ │   (Rust)     │
 │             │ ←──── Ack ───────────  │              │
 │             │ ───── GetSession ───→  │              │
+│             │ ───── ListSessions ─→  │              │
 │             │ ───── CancelSession →  │              │
 │             │ ←──→  StreamSession    │              │
+│             │ ←───  WatchSessions    │              │
 │             │ ───── ListModes ────→  │              │
 │             │ ───── GetManifest ──→  │              │
 │             │ ←───  WatchRegistry    │              │
 │             │ ←───  WatchRoots       │              │
+│             │ ←───  WatchPolicies    │              │
 └─────────────┘                        └─────────────┘
 ```
 

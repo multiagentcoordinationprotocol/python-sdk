@@ -33,13 +33,20 @@ The runtime validates the token and maps it to a sender identity with specific p
 - **max_open_sessions** — Maximum concurrent OPEN sessions
 - **can_manage_mode_registry** — Whether this token can register/unregister extension modes
 
-### Dev agent headers (development only)
+### Dev-agent bearer auth (development only)
 
 ```python
 auth = AuthConfig.for_dev_agent("my-agent")
 ```
 
-Sends `x-macp-agent-id` header. Requires the runtime to be started with `MACP_ALLOW_DEV_SENDER_HEADER=1`. **Never use in production.**
+Sends `Authorization: Bearer my-agent`. The runtime's `dev_authenticate`
+fallback binds the bearer token value verbatim as the authenticated
+sender. **Never use in production** — the token is unencrypted and
+trivially spoofable.
+
+Runtime ≥ 0.4.0 removed the legacy `x-macp-agent-id` header path (and
+the `MACP_ALLOW_DEV_SENDER_HEADER` env flag that gated it). SDK 0.2.4+
+automatically uses the Bearer-based dev-auth described above.
 
 ### mTLS (mutual TLS)
 

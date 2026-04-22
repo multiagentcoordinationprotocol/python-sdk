@@ -5,9 +5,10 @@ initiator has already sent ``SessionStart`` and ``Proposal`` must still
 see both envelopes, because the runtime replays accepted history
 following a subscribe frame and then switches to live broadcast.
 
-Requires a running MACP runtime on localhost:50051 with:
-  MACP_ALLOW_INSECURE=1
-  MACP_ALLOW_DEV_SENDER_HEADER=1
+Requires a running MACP runtime on localhost:50051 started with
+``MACP_ALLOW_INSECURE=1`` (SDK ≥ 0.2.4 dev-agent auth uses the Bearer
+header, so the legacy ``MACP_ALLOW_DEV_SENDER_HEADER`` flag is no
+longer required).
 """
 
 from __future__ import annotations

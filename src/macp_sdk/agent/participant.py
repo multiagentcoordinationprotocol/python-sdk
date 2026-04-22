@@ -299,6 +299,7 @@ class Participant:
         )
         self._last_phase: str | None = None
         self._transport = transport
+        self._cancel_callback_server: Any | None = None
 
     @property
     def participant_id(self) -> str:
@@ -453,6 +454,7 @@ class Participant:
             participants=cfg.participants,
             ttl_ms=cfg.ttl_ms,
             context_id=cfg.context_id,
+            extensions=cfg.extensions or None,
             mode_version=cfg.mode_version,
             configuration_version=cfg.configuration_version,
             policy_version=cfg.policy_version,
@@ -476,5 +478,25 @@ class Participant:
         self._process_envelope(envelope)
 
     def stop(self) -> None:
-        """Signal the event loop to stop."""
+        """Signal the event loop to stop.
+
+        Also shuts down a bound cancel-callback HTTP server (if one was
+        started by :func:`from_bootstrap` for this participant).
+        """
         self._stopped = True
+        server = self._cancel_callback_server
+        if server is not None:
+            self._cancel_callback_server = None
+            try:
+                server.close()
+            except Exception:
+                logger.exception("cancel_callback server close failed")
+
+    def attach_cancel_callback_server(self, server: Any) -> None:
+        """Attach a :class:`CancelCallbackServer` to this participant.
+
+        The server's lifetime is then tied to :meth:`stop` — the event
+        loop exit (or an incoming cancel POST that calls ``stop``) shuts
+        it down.
+        """
+        self._cancel_callback_server = server

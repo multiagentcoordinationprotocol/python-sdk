@@ -107,6 +107,10 @@ For local development:
 ```bash
 # In the runtime repo:
 export MACP_ALLOW_INSECURE=1
-export MACP_ALLOW_DEV_SENDER_HEADER=1
 cargo run
 ```
+
+SDK ≥ 0.2.4 drives dev-agent auth over the standard `Authorization:
+Bearer` header, so the legacy `MACP_ALLOW_DEV_SENDER_HEADER=1` flag is
+no longer required (runtime ≥ 0.4.0 removed the underlying
+`x-macp-agent-id` code path).

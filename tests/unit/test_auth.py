@@ -8,12 +8,15 @@ from macp_sdk.auth import AuthConfig
 class TestAuthConfig:
     def test_for_dev_agent(self):
         auth = AuthConfig.for_dev_agent("alice")
-        assert auth.agent_id == "alice"
+        # Since runtime v0.4.0 the ``x-macp-agent-id`` header path is
+        # removed (``dev_mode_rejects_dev_sender_header`` test on the
+        # runtime). Dev-agent auth now rides the Bearer header so
+        # participants list entries still match the authenticated
+        # sender verbatim.
+        assert auth.bearer_token == "alice"
+        assert auth.agent_id is None
         assert auth.sender_hint == "alice"
-        assert auth.bearer_token is None
         assert auth.sender == "alice"
-        # Dev-agent auth defaults expected_sender to the agent_id so client-side
-        # mismatch checks still work in tests and examples.
         assert auth.expected_sender == "alice"
 
     def test_for_dev_agent_explicit_expected_sender(self):
@@ -59,7 +62,18 @@ class TestAuthConfig:
     def test_metadata_dev_agent(self):
         auth = AuthConfig.for_dev_agent("alice")
         headers = auth.metadata()
-        assert ("x-macp-agent-id", "alice") in headers
+        # Runtime v0.4.0+ ignores ``x-macp-agent-id``; dev-auth now
+        # tunnels the identity through the Bearer header.
+        assert ("authorization", "Bearer alice") in headers
+        assert not any(key == "x-macp-agent-id" for key, _ in headers)
+
+    def test_metadata_legacy_agent_id_field_emits_no_header(self):
+        """Direct ``AuthConfig(agent_id=...)`` construction still works
+        for backwards compat, but the dead ``x-macp-agent-id`` header is
+        no longer emitted — the runtime rejects it. Callers must switch
+        to a Bearer token (``for_dev_agent`` or ``for_bearer``)."""
+        auth = AuthConfig(agent_id="alice")
+        assert auth.metadata() == []
 
     def test_metadata_bearer(self):
         auth = AuthConfig.for_bearer("tok-123")

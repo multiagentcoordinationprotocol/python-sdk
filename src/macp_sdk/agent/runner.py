@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 from dataclasses import dataclass, field
@@ -19,12 +21,34 @@ class InitiatorConfig:
     participants: list[str]
     ttl_ms: int
     context_id: str = ""
+    extensions: dict[str, bytes] = field(default_factory=dict)
     roots: list[dict[str, str]] | None = None
     mode_version: str | None = None
     configuration_version: str | None = None
     policy_version: str | None = None
     kickoff_message_type: str | None = None
     kickoff_payload: dict[str, Any] = field(default_factory=dict)
+
+
+def _decode_extensions(raw: Any) -> dict[str, bytes]:
+    """Coerce a bootstrap ``session_start.extensions`` map into ``dict[str, bytes]``.
+
+    The protobuf ``map<string, bytes>`` is JSON-encoded as base64 strings
+    (proto-JSON canonical), so try base64 first and fall back to raw
+    UTF-8 bytes for hand-authored bootstraps.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    decoded: dict[str, bytes] = {}
+    for key, value in raw.items():
+        if isinstance(value, bytes):
+            decoded[str(key)] = value
+        elif isinstance(value, str):
+            try:
+                decoded[str(key)] = base64.b64decode(value, validate=True)
+            except (binascii.Error, ValueError):
+                decoded[str(key)] = value.encode("utf-8")
+    return decoded
 
 
 def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
@@ -116,6 +140,7 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
             participants=[str(p) for p in ss.get("participants", participants)],
             ttl_ms=int(ss.get("ttl_ms", 300000)),
             context_id=str(ss.get("context_id", "")),
+            extensions=_decode_extensions(ss.get("extensions")),
             roots=ss.get("roots"),
             mode_version=_str_or("mode_version", mode_version),
             configuration_version=_str_or("configuration_version", configuration_version),
@@ -126,7 +151,7 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
             kickoff_payload=kickoff.get("payload", {}) if kickoff else {},
         )
 
-    return Participant(
+    participant = Participant(
         participant_id=participant_id,
         session_id=session_id,
         mode=mode,
@@ -138,3 +163,44 @@ def from_bootstrap(bootstrap_path: str | None = None) -> Participant:
         policy_version=str(policy_version) if policy_version else DEFAULT_POLICY_VERSION,
         initiator_config=initiator_config,
     )
+
+    _bind_cancel_callback(participant, ctx.get("cancel_callback"))
+    return participant
+
+
+def _bind_cancel_callback(participant: Participant, raw: Any) -> None:
+    """Start a cancel-callback HTTP server bound to ``participant.stop``.
+
+    Reads the bootstrap ``cancel_callback`` field (``{host, port, path}``)
+    and, if present, launches a daemon HTTP server that calls
+    ``participant.stop()`` on POST. The server is attached to the
+    participant so its event-loop shutdown (or an incoming POST) tears
+    it down cleanly.
+
+    The bootstrap field is optional; callers that never set it see no
+    behavioural change. Reference: RFC-0001 §7.2 Option A, and the
+    TypeScript SDK's equivalent wiring in
+    ``examples-service/src/example-agents/runtime/risk-decider.worker.ts``.
+    """
+    if not isinstance(raw, dict):
+        return
+    host = str(raw.get("host") or "")
+    port = raw.get("port")
+    path = str(raw.get("path") or "")
+    if not host or port is None or not path:
+        return
+
+    # Local import so the stdlib ``http.server`` is paid for only when
+    # a bootstrap actually asks for a callback.
+    from .cancel_callback import start_cancel_callback_server
+
+    def _on_cancel(_run_id: str, _reason: str) -> None:
+        participant.stop()
+
+    server = start_cancel_callback_server(
+        host=host,
+        port=int(port),
+        path=path,
+        on_cancel=_on_cancel,
+    )
+    participant.attach_cancel_callback_server(server)

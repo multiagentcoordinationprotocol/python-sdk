@@ -25,6 +25,38 @@ class PolicyChange:
     observed_at_unix_ms: int = 0
 
 
+@dataclass(slots=True)
+class SessionLifecycle:
+    """A single session lifecycle event from ``WatchSessions``.
+
+    Runtime event types (per ``SessionLifecycleEvent.EventType``): ``CREATED``
+    on SessionStart acceptance (also emitted for pre-existing sessions at
+    subscribe time), ``RESOLVED`` on mode-determined terminal outcome,
+    ``EXPIRED`` on TTL expiry or explicit ``CancelSession``.
+    """
+
+    event_type: str = "UNSPECIFIED"
+    observed_at_unix_ms: int = 0
+    session: Any = None
+
+    @property
+    def is_created(self) -> bool:
+        return self.event_type == "CREATED"
+
+    @property
+    def is_resolved(self) -> bool:
+        return self.event_type == "RESOLVED"
+
+    @property
+    def is_expired(self) -> bool:
+        return self.event_type == "EXPIRED"
+
+    @property
+    def is_terminal(self) -> bool:
+        """``True`` for RESOLVED or EXPIRED — the session won't emit more events."""
+        return self.event_type in ("RESOLVED", "EXPIRED")
+
+
 class ModeRegistryWatcher:
     """Watch for mode registry changes from the runtime."""
 
@@ -94,6 +126,72 @@ class SignalWatcher:
         for envelope in self.signals():
             return envelope
         raise RuntimeError("stream ended before receiving a signal")
+
+
+_SESSION_EVENT_PREFIX = "EVENT_TYPE_"
+
+
+def _session_event_name(event_type: int) -> str:
+    """Map ``SessionLifecycleEvent.EventType`` enum ints to short string names.
+
+    The proto enum spells values as ``EVENT_TYPE_CREATED``; strip the
+    prefix so consumers can compare against ``"CREATED"`` without
+    importing the proto module.
+    """
+    from macp.v1 import core_pb2
+
+    name = core_pb2.SessionLifecycleEvent.EventType.Name(event_type)
+    if name.startswith(_SESSION_EVENT_PREFIX):
+        return name[len(_SESSION_EVENT_PREFIX) :]
+    return name
+
+
+class SessionWatcher:
+    """Watch for session lifecycle events from the runtime.
+
+    Wraps ``MacpClient.watch_sessions()`` and normalises each response into
+    a ``SessionLifecycle`` record carrying the event type as a short
+    string (``CREATED`` / ``RESOLVED`` / ``EXPIRED``) and the full
+    ``SessionMetadata``. The runtime emits an initial CREATED event for
+    every already-open session at subscribe time, then live events
+    thereafter — see ``runtime/src/server.rs::watch_sessions``.
+    """
+
+    def __init__(self, client: MacpClient, *, auth: AuthConfig | None = None) -> None:
+        self._client = client
+        self._auth = auth
+
+    def changes(self) -> Iterator[SessionLifecycle]:
+        """Yield ``SessionLifecycle`` items from the runtime stream."""
+        for response in self._client.watch_sessions(auth=self._auth):
+            event = getattr(response, "event", None)
+            if event is None:
+                continue
+            yield SessionLifecycle(
+                event_type=_session_event_name(event.event_type),
+                observed_at_unix_ms=event.observed_at_unix_ms,
+                session=event.session,
+            )
+
+    def watch(self, handler: Callable[[SessionLifecycle], None]) -> None:
+        """Block and invoke *handler* for each lifecycle event."""
+        for change in self.changes():
+            handler(change)
+
+    def next_change(self) -> SessionLifecycle:
+        """Pull a single lifecycle event from the stream and return it."""
+        for change in self.changes():
+            return change
+        raise RuntimeError("stream ended before receiving a session lifecycle event")
+
+
+class SessionLifecycleWatcher(SessionWatcher):
+    """Canonical name for :class:`SessionWatcher`.
+
+    Parity with ``typescript-sdk``'s ``SessionLifecycleWatcher``. Both exports
+    resolve to the same implementation; ``SessionWatcher`` is kept as a
+    deprecated alias for 0.3.x and will be removed in 0.4.0.
+    """
 
 
 class PolicyWatcher:
