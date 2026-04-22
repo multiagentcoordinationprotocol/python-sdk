@@ -420,7 +420,9 @@ class Participant:
                     commitment = getattr(self._projection, "commitment", None)
                     result = TerminalResult(
                         state=current_phase,
-                        commitment=commitment if commitment is not None else envelope
+                        commitment=commitment
+                        if commitment is not None
+                        else envelope
                         if envelope.message_type == "Commitment"
                         else None,
                     )
