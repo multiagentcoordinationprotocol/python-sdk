@@ -44,10 +44,6 @@ fallback binds the bearer token value verbatim as the authenticated
 sender. **Never use in production** — the token is unencrypted and
 trivially spoofable.
 
-Runtime ≥ 0.4.0 removed the legacy `x-macp-agent-id` header path (and
-the `MACP_ALLOW_DEV_SENDER_HEADER` env flag that gated it). SDK 0.2.4+
-automatically uses the Bearer-based dev-auth described above.
-
 ### mTLS (mutual TLS)
 
 For agent-to-agent authentication with client certificates:

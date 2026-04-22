@@ -1,13 +1,10 @@
 """Integration tests for SDK-PY-2 / SDK-PY-3: session discovery.
 
-Exercises ``MacpClient.list_sessions`` and ``SessionWatcher`` end-to-end
-against a live runtime.
+Exercises ``MacpClient.list_sessions`` and ``SessionLifecycleWatcher``
+end-to-end against a live runtime.
 
 Requires a running MACP runtime on localhost:50051 started with
-``MACP_ALLOW_INSECURE=1``. Dev-agent auth in SDK ≥ 0.2.4 rides the
-``Authorization: Bearer <id>`` header (runtime's ``dev_authenticate``
-fallback); the legacy ``MACP_ALLOW_DEV_SENDER_HEADER`` flag is no
-longer required and is rejected on runtime ≥ 0.4.0.
+``MACP_ALLOW_INSECURE=1``.
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from macp_sdk import (
     DecisionSession,
     MacpClient,
     SessionLifecycle,
-    SessionWatcher,
+    SessionLifecycleWatcher,
     new_session_id,
 )
 
@@ -77,11 +74,11 @@ class TestListSessions:
 class TestWatchSessions:
     def test_created_and_expired_events_observed(self) -> None:
         """Start a session in one client, consume CREATED then EXPIRED
-        lifecycle events from a SessionWatcher in another."""
+        lifecycle events from a SessionLifecycleWatcher in another."""
         session_id = new_session_id()
         observer = _client("coordinator")
         observer.initialize()
-        watcher = SessionWatcher(observer)
+        watcher = SessionLifecycleWatcher(observer)
 
         seen: list[SessionLifecycle] = []
         ready = threading.Event()

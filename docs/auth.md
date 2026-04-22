@@ -22,14 +22,6 @@ treats the sender as `my-agent`.
     [`AuthConfig.for_bearer`](#production-bearer-tokens) with a real
     token issued by `MACP_AUTH_TOKENS_JSON` / `MACP_AUTH_TOKENS_FILE`.
 
-!!! note "Runtime ≥ 0.4.0 — legacy `x-macp-agent-id` removed"
-    Earlier SDK versions emitted `x-macp-agent-id: <id>` and required
-    `MACP_ALLOW_DEV_SENDER_HEADER=1` on the runtime. Runtime v0.4.0
-    removed that header path (`security.rs::dev_mode_rejects_dev_sender_header`).
-    Upgrading to SDK 0.2.4+ is transparent to existing callers of
-    `for_dev_agent` — it now rides the Bearer header instead, and no
-    runtime env flag is required.
-
 ## Production: bearer tokens
 
 ```python
@@ -61,8 +53,8 @@ session.vote("p1", "approve", sender="mallory")
 # ↑ raises MacpIdentityMismatchError(expected="alice", actual="mallory")
 ```
 
-When `expected_sender` is `None` (legacy behaviour), the SDK performs no
-client-side check and the runtime remains the final authority.
+When `expected_sender` is `None`, the SDK performs no client-side check
+and the runtime remains the final authority.
 
 ### Token configuration (runtime side)
 

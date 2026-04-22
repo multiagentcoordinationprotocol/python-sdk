@@ -1,9 +1,7 @@
 """Integration tests for all MACP session modes against a live runtime.
 
 Requires a running MACP runtime on localhost:50051 started with
-``MACP_ALLOW_INSECURE=1``. Dev-agent auth in SDK ≥ 0.2.4 rides the
-Bearer header (runtime's ``dev_authenticate`` fallback); the legacy
-``MACP_ALLOW_DEV_SENDER_HEADER`` flag is no longer required.
+``MACP_ALLOW_INSECURE=1``.
 """
 
 from __future__ import annotations

@@ -420,9 +420,6 @@ class TestFromBootstrap:
         try:
             p = from_bootstrap(path)
             assert p._auth is not None
-            # Since SDK 0.2.4, ``for_dev_agent`` tunnels the agent id
-            # through the Bearer header (runtime v0.4.0+ rejects the
-            # legacy ``x-macp-agent-id`` header).
             assert p._auth.bearer_token == "dev-1"
             assert p._auth.sender == "dev-1"
             assert p._auth.expected_sender == "dev-1"

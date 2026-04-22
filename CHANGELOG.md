@@ -2,39 +2,11 @@
 
 ## 0.3.0 (2026-04-21)
 
-Parity release — shipped alongside ``macp-sdk-typescript`` 0.3.0 to
-close the last naming gap between the two SDKs. Plan reference:
-``../typescript-sdk/plans/sdk-parity-plan.md``.
-
-### Added
-
-- **``SessionLifecycleWatcher``** — canonical name for
-  ``SessionWatcher`` (Gap E), parity with ``macp-sdk-typescript``'s
-  existing ``SessionLifecycleWatcher`` export. Subclass relationship
-  preserves a single implementation; ``SessionWatcher`` is kept as an
-  alias for one more minor version.
-
-### Deprecated
-
-- **``SessionWatcher``** — use ``SessionLifecycleWatcher``. Alias
-  retained for 0.3.x; slated for removal in 0.4.0.
-
-### Carried forward from 0.2.4 (unreleased)
-
-The 0.2.4 work ships as part of 0.3.0: session discovery RPCs,
-``SessionWatcher``, bootstrap ``cancel_callback`` server, bearer-token
-direct auth, ``client_name`` / ``client_version`` handshake fields.
-Details below.
-
----
-
-## 0.2.4 (unreleased)
-
 Session discovery surface: the SDK now wraps the runtime's
 ``ListSessions`` and ``WatchSessions`` RPCs, so Python orchestrators
 and supervisor agents can enumerate active sessions and react to
 ``CREATED`` / ``RESOLVED`` / ``EXPIRED`` lifecycle events without
-polling ``GetSession``.
+polling ``GetSession``. Parity with ``macp-sdk-typescript`` 0.3.0.
 
 ### Added
 
@@ -44,60 +16,33 @@ polling ``GetSession``.
   SessionStart payload.
 - **``MacpClient.watch_sessions()``** (SDK-PY-3) — server-streaming
   RPC yielding ``WatchSessionsResponse`` frames.
-- **``SessionWatcher`` + ``SessionLifecycle``** (SDK-PY-3) in
-  ``macp_sdk.watchers`` — high-level wrapper mirroring the existing
+- **``SessionLifecycleWatcher`` + ``SessionLifecycle``** (SDK-PY-3)
+  in ``macp_sdk.watchers`` — high-level wrapper mirroring the existing
   ``PolicyWatcher`` pattern. Event-type integers are normalised to
   short string names (``CREATED`` / ``RESOLVED`` / ``EXPIRED``), with
   ``is_created``/``is_resolved``/``is_expired``/``is_terminal``
   convenience predicates. Exported from ``macp_sdk`` package root.
-- ``tests/unit/test_client_sessions.py`` (13 tests) covering the
-  RPC wrappers, the watcher event-name mapping and empty-event
-  robustness, gRPC error wrapping, and the capability declaration.
-- ``tests/integration/test_session_discovery.py`` (2 tests)
-  exercising ``list_sessions`` + ``SessionWatcher`` end-to-end
-  against a live runtime; detects ``CREATED`` + terminal events.
-
 - **SDK-PY-6 — bootstrap ``cancel_callback`` now wired**
   (RFC-0001 §7.2 Option A). When ``bootstrap.cancel_callback =
   {host, port, path}`` is present, ``from_bootstrap`` spins up a
   stdlib-only HTTP daemon bound to ``participant.stop()`` and attaches
   it to the participant; a ``POST`` with ``{runId, reason}`` shuts the
-  agent down cleanly. Previously every agent had to hand-roll this
-  endpoint (see the TS reference in
-  ``examples-service/src/example-agents/runtime/risk-decider.worker.ts``).
-  New public helpers on ``macp_sdk.agent``:
-  ``start_cancel_callback_server`` + ``CancelCallbackServer``. The
-  server auto-shuts-down on ``Participant.stop()`` (safe even when
-  called from the handler thread — no self-deadlock).
-- ``tests/unit/test_cancel_callback.py`` (7 tests) covering happy
-  path, ``runId``/``run_id`` casing, path mismatch → 404, malformed
-  JSON → empty body, handler exception → 500, idempotent close,
-  path-without-leading-slash normalisation.
-- ``tests/unit/test_agent_participant.py`` — 2 new tests for the
-  ``from_bootstrap`` → cancel-callback wiring.
+  agent down cleanly. New public helpers on ``macp_sdk.agent``:
+  ``start_cancel_callback_server`` + ``CancelCallbackServer``.
 
 ### Changed
 
 - **SDK-PY-4**: ``_default_capabilities()`` now advertises
   ``SessionsCapability(stream=True, list_sessions=True,
-  watch_sessions=True)``. The previous handshake only declared
-  ``stream``, which mis-represented the client's capability set and
-  would have tripped future runtime diagnostics that cross-check the
-  declared capabilities against the RPCs the client actually calls.
-- **SDK-PY-5 — ``AuthConfig.for_dev_agent`` now rides the Bearer
-  header** instead of the legacy ``x-macp-agent-id``. Runtime v0.4.0
-  removed the ``x-macp-agent-id`` code path
-  (``dev_mode_rejects_dev_sender_header`` test in
-  ``runtime/src/security.rs``) and with it the
-  ``MACP_ALLOW_DEV_SENDER_HEADER`` env flag. The SDK now emits
-  ``Authorization: Bearer <agent_id>``, which the runtime's
-  ``dev_authenticate`` fallback binds verbatim as the sender — so
-  participant lists keep working unchanged. Docs (``docs/auth.md``,
-  ``docs/security.md``, ``README.md``, ``docs/index.md``,
-  ``CLAUDE.md``, integration-test headers, examples) updated to drop
-  the dead env flag. ``AuthConfig.metadata()`` no longer emits the
-  ``x-macp-agent-id`` header even when ``agent_id`` is set directly —
-  the runtime ignores it.
+  watch_sessions=True)``.
+- **SDK-PY-5 — ``AuthConfig.for_dev_agent`` now emits
+  ``Authorization: Bearer <agent_id>``**. The runtime's
+  ``dev_authenticate`` fallback binds the token value verbatim as the
+  sender, so participant lists keep working unchanged. Requires
+  runtime ≥ 0.4.0.
+- **``AuthConfig.agent_id`` field removed**. Construct directly with
+  ``AuthConfig(bearer_token=...)`` or use the
+  ``for_dev_agent`` / ``for_bearer`` classmethods.
 
 ## 0.2.3 (unreleased)
 

@@ -1,9 +1,9 @@
 """Unit tests for SDK-PY-2 / SDK-PY-3 / SDK-PY-4.
 
 Covers ``MacpClient.list_sessions`` + ``watch_sessions``, the
-``SessionWatcher`` wrapper, and the corrected ``Capabilities`` the
-client advertises during ``Initialize`` so the runtime does not see a
-misleading handshake.
+``SessionLifecycleWatcher`` wrapper, and the corrected ``Capabilities``
+the client advertises during ``Initialize`` so the runtime does not see
+a misleading handshake.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from macp.v1 import core_pb2
 from macp_sdk.auth import AuthConfig
 from macp_sdk.client import MacpClient, _default_capabilities
 from macp_sdk.errors import MacpSdkError, MacpTransportError
-from macp_sdk.watchers import SessionLifecycle, SessionWatcher
+from macp_sdk.watchers import SessionLifecycle, SessionLifecycleWatcher
 
 
 def _client_with_stub() -> tuple[MacpClient, MagicMock]:
@@ -99,7 +99,7 @@ class TestWatchSessions:
             list(client.watch_sessions())
 
 
-class TestSessionWatcher:
+class TestSessionLifecycleWatcher:
     def test_maps_event_types_to_short_names(self):
         client = MagicMock()
         r1 = _lifecycle_response(core_pb2.SessionLifecycleEvent.EVENT_TYPE_CREATED, "s1")
@@ -107,7 +107,7 @@ class TestSessionWatcher:
         r3 = _lifecycle_response(core_pb2.SessionLifecycleEvent.EVENT_TYPE_EXPIRED, "s2")
         client.watch_sessions.return_value = iter([r1, r2, r3])
 
-        watcher = SessionWatcher(client)
+        watcher = SessionLifecycleWatcher(client)
         out = list(watcher.changes())
 
         assert [ev.event_type for ev in out] == ["CREATED", "RESOLVED", "EXPIRED"]
@@ -120,7 +120,7 @@ class TestSessionWatcher:
         client = MagicMock()
         r = _lifecycle_response(core_pb2.SessionLifecycleEvent.EVENT_TYPE_CREATED, "s1")
         client.watch_sessions.return_value = iter([r])
-        watcher = SessionWatcher(client)
+        watcher = SessionLifecycleWatcher(client)
         seen: list[SessionLifecycle] = []
         watcher.watch(seen.append)
         assert len(seen) == 1 and seen[0].is_created
@@ -130,7 +130,7 @@ class TestSessionWatcher:
         bad = MagicMock(spec=[])  # no ``event`` attribute
         ok = _lifecycle_response(core_pb2.SessionLifecycleEvent.EVENT_TYPE_CREATED, "s1")
         client.watch_sessions.return_value = iter([bad, ok])
-        watcher = SessionWatcher(client)
+        watcher = SessionLifecycleWatcher(client)
         out = list(watcher.changes())
         assert len(out) == 1 and out[0].is_created
 
@@ -138,19 +138,19 @@ class TestSessionWatcher:
         client = MagicMock()
         r = _lifecycle_response(core_pb2.SessionLifecycleEvent.EVENT_TYPE_CREATED, "s1")
         client.watch_sessions.return_value = iter([r])
-        assert SessionWatcher(client).next_change().is_created
+        assert SessionLifecycleWatcher(client).next_change().is_created
 
     def test_next_change_empty_raises(self):
         client = MagicMock()
         client.watch_sessions.return_value = iter([])
         with pytest.raises(RuntimeError, match="stream ended"):
-            SessionWatcher(client).next_change()
+            SessionLifecycleWatcher(client).next_change()
 
     def test_auth_override_passed_to_client(self):
         client = MagicMock()
         client.watch_sessions.return_value = iter([])
         auth = AuthConfig.for_bearer("tok-override")
-        list(SessionWatcher(client, auth=auth).changes())
+        list(SessionLifecycleWatcher(client, auth=auth).changes())
         client.watch_sessions.assert_called_once_with(auth=auth)
 
 

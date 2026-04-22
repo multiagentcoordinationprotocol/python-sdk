@@ -146,7 +146,7 @@ def _session_event_name(event_type: int) -> str:
     return name
 
 
-class SessionWatcher:
+class SessionLifecycleWatcher:
     """Watch for session lifecycle events from the runtime.
 
     Wraps ``MacpClient.watch_sessions()`` and normalises each response into
@@ -183,15 +183,6 @@ class SessionWatcher:
         for change in self.changes():
             return change
         raise RuntimeError("stream ended before receiving a session lifecycle event")
-
-
-class SessionLifecycleWatcher(SessionWatcher):
-    """Canonical name for :class:`SessionWatcher`.
-
-    Parity with ``typescript-sdk``'s ``SessionLifecycleWatcher``. Both exports
-    resolve to the same implementation; ``SessionWatcher`` is kept as a
-    deprecated alias for 0.3.x and will be removed in 0.4.0.
-    """
 
 
 class PolicyWatcher:

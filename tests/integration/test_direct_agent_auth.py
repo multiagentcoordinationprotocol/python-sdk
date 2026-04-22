@@ -13,9 +13,7 @@ The control-plane (or any other orchestrator) pre-allocates the
 ``session_id`` and distributes it to the initiator agent via bootstrap.
 
 Requires a running MACP runtime on localhost:50051 started with
-``MACP_ALLOW_INSECURE=1`` (SDK ≥ 0.2.4 dev-agent auth rides the Bearer
-header, so the legacy ``MACP_ALLOW_DEV_SENDER_HEADER`` flag is no
-longer required).
+``MACP_ALLOW_INSECURE=1``.
 
 For the Bearer-token variant, the runtime must also expose an
 ``MACP_AUTH_TOKENS_JSON`` identity that maps ``tok-initiator-integration``
