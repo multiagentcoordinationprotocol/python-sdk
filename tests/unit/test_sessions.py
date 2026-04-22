@@ -132,9 +132,9 @@ class TestProposalSession:
 
 
 class TestTaskSession:
-    def test_request(self, mock_client):
+    def test_request_task(self, mock_client):
         s = TaskSession(mock_client, session_id="00000000-0000-4000-8000-000000000001")
-        s.request("t1", "Analyze", instructions="run pipeline")
+        s.request_task("t1", "Analyze", instructions="run pipeline")
         env = _sent_envelope(mock_client)
         assert env.mode == MODE_TASK
         assert env.message_type == "TaskRequest"
@@ -145,17 +145,42 @@ class TestTaskSession:
         env = _sent_envelope(mock_client)
         assert env.message_type == "TaskAccept"
 
-    def test_complete(self, mock_client):
+    def test_update_task(self, mock_client):
         s = TaskSession(mock_client, session_id="00000000-0000-4000-8000-000000000001")
-        s.complete("t1", output=b"result", summary="done", sender="worker", auth=_auth("worker"))
+        s.update_task("t1", status="running", progress=0.5, sender="worker", auth=_auth("worker"))
+        env = _sent_envelope(mock_client)
+        assert env.message_type == "TaskUpdate"
+
+    def test_complete_task(self, mock_client):
+        s = TaskSession(mock_client, session_id="00000000-0000-4000-8000-000000000001")
+        s.complete_task(
+            "t1", output=b"result", summary="done", sender="worker", auth=_auth("worker")
+        )
         env = _sent_envelope(mock_client)
         assert env.message_type == "TaskComplete"
 
-    def test_fail(self, mock_client):
+    def test_fail_task(self, mock_client):
         s = TaskSession(mock_client, session_id="00000000-0000-4000-8000-000000000001")
-        s.fail("t1", error_code="ERR", reason="broke", sender="worker", auth=_auth("worker"))
+        s.fail_task("t1", error_code="ERR", reason="broke", sender="worker", auth=_auth("worker"))
         env = _sent_envelope(mock_client)
         assert env.message_type == "TaskFail"
+
+    def test_deprecated_aliases_still_work(self, mock_client):
+        """The old un-suffixed names are kept as deprecated aliases for one
+        release. They forward to the canonical method and emit
+        ``DeprecationWarning``.
+        """
+        import warnings
+
+        s = TaskSession(mock_client, session_id="00000000-0000-4000-8000-000000000001")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            s.request("t1", "Analyze", instructions="run pipeline")
+            s.update("t1", progress=0.5, sender="worker", auth=_auth("worker"))
+            s.complete("t1", sender="worker", auth=_auth("worker"))
+            s.fail("t1", sender="worker", auth=_auth("worker"))
+        categories = [w.category for w in caught]
+        assert categories.count(DeprecationWarning) == 4
 
 
 class TestHandoffSession:

@@ -24,6 +24,12 @@ from .errors import (
     MacpTransportError,
 )
 
+# Public typing alias for inline stream-error callbacks. Parity with
+# typescript-sdk's ``InlineErrorCallback``. Receives the protobuf
+# ``StreamError`` (or a legacy error object) for application-level errors
+# that do NOT tear down the stream — consumers typically log and continue.
+InlineErrorCallback = Callable[[Any], None]
+
 
 def _parse_ack_reasons(ack: object) -> list[str]:
     """Extract structured denial reasons from an ACK error's details."""
@@ -91,7 +97,7 @@ class MacpStream:
         self._requests: queue.Queue[object] = queue.Queue()
         self._responses: queue.Queue[object] = queue.Queue()
         self._closed = False
-        self._inline_error_callbacks: list[Callable[[Any], None]] = []
+        self._inline_error_callbacks: list[InlineErrorCallback] = []
         self._call = stub.StreamSession(self._request_iter(), metadata=metadata, timeout=timeout)
         self._thread = threading.Thread(target=self._pump_responses, daemon=True)
         self._thread.start()
@@ -142,7 +148,7 @@ class MacpStream:
         finally:
             self._responses.put(self._END)
 
-    def on_inline_error(self, callback: Callable[[Any], None]) -> None:
+    def on_inline_error(self, callback: InlineErrorCallback) -> None:
         """Register a callback for inline application-level stream errors."""
         self._inline_error_callbacks.append(callback)
 

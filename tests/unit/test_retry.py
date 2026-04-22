@@ -26,6 +26,16 @@ class TestRetryPolicy:
         assert p.max_retries == 3
         assert "RATE_LIMITED" in p.retryable_codes
 
+    def test_retryable_codes_exact_cross_sdk_parity(self):
+        """The retryable set must match exactly between Python and TypeScript
+        (typescript-sdk/src/retry.ts ``DEFAULT_RETRY_POLICY.retryableCodes``).
+        FORBIDDEN, UNAUTHENTICATED, and POLICY_DENIED must NOT be retryable —
+        a well-meaning contributor adding one of these on one side would
+        desync the SDKs.
+        """
+        p = RetryPolicy()
+        assert p.retryable_codes == frozenset({"RATE_LIMITED", "INTERNAL_ERROR"})
+
 
 class TestRetrySend:
     @patch("macp_sdk.retry.time.sleep")

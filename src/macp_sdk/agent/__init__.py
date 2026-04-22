@@ -1,6 +1,6 @@
 from .cancel_callback import CancelCallbackServer, start_cancel_callback_server
 from .dispatcher import Dispatcher
-from .participant import Participant, ParticipantActions
+from .participant import InitiatorConfig, Participant, ParticipantActions
 from .runner import from_bootstrap
 from .strategies import (
     CommitmentDecision,
@@ -44,6 +44,7 @@ __all__ = [
     "HandlerContext",
     "HttpTransportAdapter",
     "IncomingMessage",
+    "InitiatorConfig",
     "MessageHandler",
     "Participant",
     "ParticipantActions",

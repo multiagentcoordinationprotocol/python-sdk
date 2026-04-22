@@ -86,7 +86,7 @@ session.start(
 )
 
 # Requester creates the task
-session.request(
+session.request_task(
     "t1", "Q4 Sales Analysis",
     instructions="Run the sales pipeline, produce a summary with key metrics and trends",
     requested_assignee="analyst-agent",
@@ -98,11 +98,11 @@ session.request(
 session.accept_task("t1", sender="analyst-agent")
 
 # Worker reports progress
-session.update("t1", status="running", progress=0.3, message="Loading datasets...", sender="analyst-agent")
-session.update("t1", status="running", progress=0.7, message="Computing trends...", sender="analyst-agent")
+session.update_task("t1", status="running", progress=0.3, message="Loading datasets...", sender="analyst-agent")
+session.update_task("t1", status="running", progress=0.7, message="Computing trends...", sender="analyst-agent")
 
 # Worker completes
-session.complete(
+session.complete_task(
     "t1",
     output=b'{"revenue": "$2.3M", "growth": "12%", "top_product": "Widget Pro"}',
     summary="Q4 revenue up 12% YoY, driven by Widget Pro",

@@ -4,30 +4,14 @@ import base64
 import binascii
 import json
 import os
-from dataclasses import dataclass, field
 from typing import Any
 
 from ..auth import AuthConfig
 from ..client import MacpClient
 from ..constants import DEFAULT_POLICY_VERSION
-from .participant import Participant
+from .participant import InitiatorConfig, Participant
 
-
-@dataclass
-class InitiatorConfig:
-    """Configuration for the initiator agent's SessionStart + kickoff."""
-
-    intent: str
-    participants: list[str]
-    ttl_ms: int
-    context_id: str = ""
-    extensions: dict[str, bytes] = field(default_factory=dict)
-    roots: list[dict[str, str]] | None = None
-    mode_version: str | None = None
-    configuration_version: str | None = None
-    policy_version: str | None = None
-    kickoff_message_type: str | None = None
-    kickoff_payload: dict[str, Any] = field(default_factory=dict)
+__all__ = ["InitiatorConfig", "from_bootstrap"]
 
 
 def _decode_extensions(raw: Any) -> dict[str, bytes]:

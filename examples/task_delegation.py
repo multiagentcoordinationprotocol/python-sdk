@@ -23,7 +23,7 @@ session.start(
 )
 
 # --- Planner creates task request ---
-session.request(
+session.request_task(
     "t1",
     "Q4 Sales Analysis",
     instructions="Run the sales pipeline and produce a summary report",
@@ -34,10 +34,12 @@ session.request(
 session.accept_task("t1", sender="worker")
 
 # --- Worker reports progress ---
-session.update("t1", status="running", progress=0.5, message="50% complete", sender="worker")
+session.update_task("t1", status="running", progress=0.5, message="50% complete", sender="worker")
 
 # --- Worker completes ---
-session.complete("t1", output=b"Q4 revenue: $2.3M", summary="Analysis complete", sender="worker")
+session.complete_task(
+    "t1", output=b"Q4 revenue: $2.3M", summary="Analysis complete", sender="worker"
+)
 
 # --- Planner commits the outcome ---
 proj = session.task_projection
