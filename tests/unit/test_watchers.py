@@ -22,6 +22,7 @@ from macp_sdk.watchers import (
     PolicyChange,
     PolicyWatcher,
     RootsWatcher,
+    SessionLifecycleWatcher,
     SignalWatcher,
 )
 
@@ -169,3 +170,10 @@ class TestPolicyWatcher:
         (only,) = list(watcher.changes())
         assert only.descriptors == []
         assert only.observed_at_unix_ms == 0
+
+
+class TestSessionLifecycleWatcherExport:
+    def test_exported_from_package_root(self):
+        import macp_sdk
+
+        assert macp_sdk.SessionLifecycleWatcher is SessionLifecycleWatcher

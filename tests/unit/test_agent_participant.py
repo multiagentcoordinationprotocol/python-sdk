@@ -420,7 +420,8 @@ class TestFromBootstrap:
         try:
             p = from_bootstrap(path)
             assert p._auth is not None
-            assert p._auth.agent_id == "dev-1"
+            assert p._auth.bearer_token == "dev-1"
+            assert p._auth.sender == "dev-1"
             assert p._auth.expected_sender == "dev-1"
         finally:
             os.unlink(path)
@@ -483,6 +484,200 @@ class TestFromBootstrap:
             assert cfg.ttl_ms == 120000
             assert cfg.kickoff_message_type == "Proposal"
             assert cfg.kickoff_payload["proposal_id"] == "p1"
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_initiator_extensions_decoded_from_base64(self):
+        """SDK-PY-1: ``initiator.session_start.extensions`` (a proto
+        ``map<string, bytes>`` encoded as base64 per proto-JSON canonical
+        form) must be decoded back into ``dict[str, bytes]`` on the
+        resulting ``InitiatorConfig``."""
+        import base64
+
+        aitp_bytes = b"\x01\x02\x03aitp"
+        ctxm_bytes = b"ctxm-provenance"
+        bootstrap = {
+            "participant_id": "coord",
+            "session_id": "sess-ext",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "coord"},
+            "secure": False,
+            "allow_insecure": True,
+            "initiator": {
+                "session_start": {
+                    "intent": "with-ext",
+                    "participants": ["coord"],
+                    "ttl_ms": 60000,
+                    "extensions": {
+                        "aitp.v1": base64.b64encode(aitp_bytes).decode("ascii"),
+                        "ctxm.v1": base64.b64encode(ctxm_bytes).decode("ascii"),
+                    },
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            cfg = p._initiator_config
+            assert cfg is not None
+            assert cfg.extensions == {
+                "aitp.v1": aitp_bytes,
+                "ctxm.v1": ctxm_bytes,
+            }
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_initiator_extensions_absent_defaults_empty(self):
+        """A bootstrap without an ``extensions`` key must yield an empty
+        dict so ``_emit_initiator_envelopes()`` does not send a nil map."""
+        bootstrap = {
+            "participant_id": "coord",
+            "session_id": "sess-noext",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "coord"},
+            "secure": False,
+            "allow_insecure": True,
+            "initiator": {
+                "session_start": {
+                    "intent": "no-ext",
+                    "participants": ["coord"],
+                    "ttl_ms": 60000,
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            cfg = p._initiator_config
+            assert cfg is not None
+            assert cfg.extensions == {}
+        finally:
+            os.unlink(path)
+
+    def test_emit_initiator_envelopes_passes_extensions(self):
+        """SDK-PY-1: ``_emit_initiator_envelopes`` must forward
+        ``InitiatorConfig.extensions`` to ``ParticipantActions.start_session``
+        so the bytes survive onto the SessionStart envelope."""
+        from macp_sdk.agent.runner import InitiatorConfig
+
+        client = _make_mock_client()
+        cfg = InitiatorConfig(
+            intent="i",
+            participants=["coord", "alice"],
+            ttl_ms=30000,
+            context_id="ctx-123",
+            extensions={"aitp.v1": b"\xde\xad"},
+        )
+        p = Participant(
+            participant_id="coord",
+            session_id="sess-emit",
+            mode=MODE_DECISION,
+            client=client,
+            auth=client.auth,
+            participants=["coord", "alice"],
+            initiator_config=cfg,
+        )
+        p._actions = MagicMock(spec=ParticipantActions)
+
+        p._emit_initiator_envelopes()
+
+        p._actions.start_session.assert_called_once()
+        kwargs = p._actions.start_session.call_args.kwargs
+        assert kwargs["extensions"] == {"aitp.v1": b"\xde\xad"}
+        assert kwargs["context_id"] == "ctx-123"
+
+    def test_emit_initiator_envelopes_empty_extensions_sent_as_none(self):
+        """An empty ``extensions`` dict should be normalised to ``None``
+        so the builder emits an empty proto map (default), not a
+        sentinel value the runtime would have to parse specially."""
+        from macp_sdk.agent.runner import InitiatorConfig
+
+        client = _make_mock_client()
+        cfg = InitiatorConfig(
+            intent="i",
+            participants=["coord"],
+            ttl_ms=30000,
+        )
+        p = Participant(
+            participant_id="coord",
+            session_id="sess-empty-ext",
+            mode=MODE_DECISION,
+            client=client,
+            auth=client.auth,
+            participants=["coord"],
+            initiator_config=cfg,
+        )
+        p._actions = MagicMock(spec=ParticipantActions)
+
+        p._emit_initiator_envelopes()
+
+        assert p._actions.start_session.call_args.kwargs["extensions"] is None
+
+    def test_bootstrap_cancel_callback_binds_to_participant_stop(self):
+        """When the bootstrap JSON carries a ``cancel_callback`` block
+        (RFC-0001 §7.2 Option A), ``from_bootstrap`` must spin up the
+        HTTP server and wire it to ``participant.stop()`` so a POST
+        from the control-plane tears the event loop down cleanly.
+        Before 0.2.4 every agent had to hand-roll this."""
+        import json as _json
+        import urllib.request
+
+        bootstrap = {
+            "participant_id": "coord",
+            "session_id": "sess-cc",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "coord"},
+            "secure": False,
+            "allow_insecure": True,
+            "cancel_callback": {
+                "host": "127.0.0.1",
+                "port": 0,  # let the OS pick — we read the real port off the server
+                "path": "/cancel",
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            _json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            server = p._cancel_callback_server
+            assert server is not None, "cancel_callback server not attached"
+
+            # POST and verify the participant stops.
+            host, port = server.address
+            req = urllib.request.Request(
+                f"http://{host}:{port}/cancel",
+                data=b'{"runId":"r","reason":"test"}',
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            resp = urllib.request.urlopen(req, timeout=2.0)
+            assert resp.status == 202
+            assert p.is_stopped, "participant.stop() was not called"
+            # After stop the server is closed and detached.
+            assert p._cancel_callback_server is None
+        finally:
+            os.unlink(path)
+
+    def test_bootstrap_without_cancel_callback_leaves_server_none(self):
+        bootstrap = {
+            "participant_id": "coord",
+            "session_id": "sess-no-cc",
+            "mode": "macp.mode.decision.v1",
+            "auth": {"agent_id": "coord"},
+            "secure": False,
+            "allow_insecure": True,
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(bootstrap, f)
+            path = f.name
+        try:
+            p = from_bootstrap(path)
+            assert p._cancel_callback_server is None
         finally:
             os.unlink(path)
 

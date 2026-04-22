@@ -2,7 +2,7 @@ from ._logging import configure_logging
 from .auth import AuthConfig
 from .base_projection import BaseProjection
 from .base_session import BaseSession
-from .client import MacpClient, MacpStream
+from .client import InlineErrorCallback, MacpClient, MacpStream
 from .constants import (
     DEFAULT_CONFIGURATION_VERSION,
     DEFAULT_MODE_VERSION,
@@ -100,6 +100,8 @@ from .watchers import (
     PolicyChange,
     PolicyWatcher,
     RootsWatcher,
+    SessionLifecycle,
+    SessionLifecycleWatcher,
     SignalWatcher,
 )
 
@@ -145,6 +147,7 @@ __all__ = [
     "HandoffProjection",
     "HandoffRecord",
     "HandoffSession",
+    "InlineErrorCallback",
     "MacpAckError",
     "MacpClient",
     "MacpIdentityMismatchError",
@@ -169,6 +172,8 @@ __all__ = [
     "RejectionRules",
     "RetryPolicy",
     "RootsWatcher",
+    "SessionLifecycle",
+    "SessionLifecycleWatcher",
     "SignalWatcher",
     "TaskAssignmentRules",
     "TaskCompletionRules",

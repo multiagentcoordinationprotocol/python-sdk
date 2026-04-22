@@ -2,7 +2,7 @@
 
 All authenticated operations require an `AuthConfig`. The SDK supports two authentication methods, matching the runtime's security model.
 
-## Development: dev agent headers
+## Development: dev-agent bearer auth
 
 ```python
 from macp_sdk import AuthConfig
@@ -10,10 +10,17 @@ from macp_sdk import AuthConfig
 auth = AuthConfig.for_dev_agent("my-agent")
 ```
 
-This sends the `x-macp-agent-id: my-agent` header. The runtime uses this as the sender identity.
+This sends `Authorization: Bearer my-agent`. The runtime's
+`dev_authenticate` fallback (`runtime/src/security.rs`) binds the
+bearer token value verbatim as the authenticated sender, so a dev
+runtime without a configured auth resolver chain accepts the call and
+treats the sender as `my-agent`.
 
 !!! warning "Development only"
-    Dev agent headers require the runtime to be started with `MACP_ALLOW_DEV_SENDER_HEADER=1`. **Never use in production** — the header is trivially spoofable.
+    **Never use in production** — the token value is unencrypted and
+    trivially spoofable. In production, use
+    [`AuthConfig.for_bearer`](#production-bearer-tokens) with a real
+    token issued by `MACP_AUTH_TOKENS_JSON` / `MACP_AUTH_TOKENS_FILE`.
 
 ## Production: bearer tokens
 
@@ -46,8 +53,8 @@ session.vote("p1", "approve", sender="mallory")
 # ↑ raises MacpIdentityMismatchError(expected="alice", actual="mallory")
 ```
 
-When `expected_sender` is `None` (legacy behaviour), the SDK performs no
-client-side check and the runtime remains the final authority.
+When `expected_sender` is `None`, the SDK performs no client-side check
+and the runtime remains the final authority.
 
 ### Token configuration (runtime side)
 

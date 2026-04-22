@@ -97,7 +97,7 @@ session.approve("r1", reason="agreed", sender="eve")
 proj = session.quorum_projection
 total_eligible = 5  # all participants except coordinator
 
-if proj.is_threshold_reached():
+if proj.has_quorum():
     session.commit(
         action="quorum.approved",
         authority_scope="security-policy",
@@ -132,7 +132,7 @@ proj.rejection_count()                    # 1
 proj.abstention_count()                   # 1
 
 # Threshold logic
-proj.is_threshold_reached()               # True (3 >= 3)
+proj.has_quorum()               # True (3 >= 3)
 proj.is_threshold_unreachable(5)          # False
 proj.commitment_ready(5)                  # True (threshold reached OR unreachable)
 
@@ -169,7 +169,7 @@ while time.time() < deadline:
         break
     time.sleep(10)
 
-if proj.is_threshold_reached():
+if proj.has_quorum():
     session.commit(action="approved", ...)
 else:
     session.commit(action="rejected", reason="deadline reached without quorum")

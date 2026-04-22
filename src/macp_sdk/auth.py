@@ -13,26 +13,31 @@ class AuthConfig:
     reaches the wire. Per RFC-MACP-0004 §4 the runtime derives ``sender``
     from authenticated identity, so mismatches are always rejected — this
     check just surfaces the problem earlier and more clearly.
-
-    When ``expected_sender`` is ``None`` the check is skipped (preserves
-    legacy behaviour for dev/test flows that use a single shared identity).
     """
 
     bearer_token: str | None = None
-    agent_id: str | None = None
     sender_hint: str | None = None
     expected_sender: str | None = None
 
     def __post_init__(self) -> None:
-        if self.bearer_token and self.agent_id:
-            raise ValueError("choose either bearer_token or agent_id, not both")
-        if not self.bearer_token and not self.agent_id:
-            raise ValueError("either bearer_token or agent_id is required")
+        if not self.bearer_token:
+            raise ValueError("bearer_token is required")
 
     @classmethod
     def for_dev_agent(cls, agent_id: str, *, expected_sender: str | None = None) -> AuthConfig:
+        """Build an AuthConfig for local development without a real token.
+
+        Emits ``Authorization: Bearer <agent_id>``. The runtime's
+        ``dev_authenticate`` fallback binds the bearer token value
+        verbatim as the authenticated sender, so passing the raw agent
+        id keeps participant lists like ``["coordinator", "alice"]``
+        working unchanged.
+
+        For production deployments issue real tokens via the auth
+        resolver chain and use :meth:`for_bearer` directly.
+        """
         return cls(
-            agent_id=agent_id,
+            bearer_token=agent_id,
             sender_hint=agent_id,
             expected_sender=expected_sender or agent_id,
         )
@@ -63,12 +68,7 @@ class AuthConfig:
 
     @property
     def sender(self) -> str | None:
-        return self.sender_hint or self.agent_id
+        return self.sender_hint
 
     def metadata(self) -> list[tuple[str, str]]:
-        headers: list[tuple[str, str]] = []
-        if self.bearer_token:
-            headers.append(("authorization", f"Bearer {self.bearer_token}"))
-        if self.agent_id:
-            headers.append(("x-macp-agent-id", self.agent_id))
-        return headers
+        return [("authorization", f"Bearer {self.bearer_token}")]

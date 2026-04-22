@@ -129,7 +129,7 @@ class TestMetadataPassThrough:
     def test_dev_agent_metadata(self):
         auth = AuthConfig.for_dev_agent("alice")
         client = MacpClient(target="localhost:0", allow_insecure=True, auth=auth)
-        assert ("x-macp-agent-id", "alice") in client._metadata()
+        assert ("authorization", "Bearer alice") in client._metadata()
 
 
 class TestSendDuplicateIsIdempotentSuccess:

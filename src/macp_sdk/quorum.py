@@ -113,7 +113,11 @@ class QuorumProjection(BaseProjection):
     def abstention_count(self, request_id: str) -> int:
         return self._count_votes(request_id, "abstain")
 
-    def is_threshold_reached(self, request_id: str) -> bool:
+    def has_quorum(self, request_id: str) -> bool:
+        """True if the approval count has reached the required threshold.
+
+        Canonical name across SDKs (parity with TypeScript ``hasQuorum``).
+        """
         req = self.requests.get(request_id)
         if req is None:
             return False
@@ -128,8 +132,16 @@ class QuorumProjection(BaseProjection):
         return self.approval_count(request_id) + remaining < req.required_approvals
 
     def commitment_ready(self, request_id: str) -> bool:
-        """True if the threshold is reached."""
-        return self.is_threshold_reached(request_id)
+        """True if quorum is reached and commit has not yet been issued.
+
+        Canonical cross-SDK semantics (parity with TypeScript
+        ``QuorumProjection.commitmentReady``): ``has_quorum`` alone is
+        insufficient — once the session has moved to the ``Committed``
+        phase, the commit is no longer "ready" because it has already
+        happened. Callers that want the pure threshold-reached check
+        should use :meth:`has_quorum`.
+        """
+        return self.has_quorum(request_id) and self.phase != "Committed"
 
     def threshold(self, request_id: str) -> int:
         """Return the required approval count, or 0 if no request yet."""

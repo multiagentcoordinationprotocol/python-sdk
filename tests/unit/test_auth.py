@@ -8,12 +8,9 @@ from macp_sdk.auth import AuthConfig
 class TestAuthConfig:
     def test_for_dev_agent(self):
         auth = AuthConfig.for_dev_agent("alice")
-        assert auth.agent_id == "alice"
+        assert auth.bearer_token == "alice"
         assert auth.sender_hint == "alice"
-        assert auth.bearer_token is None
         assert auth.sender == "alice"
-        # Dev-agent auth defaults expected_sender to the agent_id so client-side
-        # mismatch checks still work in tests and examples.
         assert auth.expected_sender == "alice"
 
     def test_for_dev_agent_explicit_expected_sender(self):
@@ -24,7 +21,6 @@ class TestAuthConfig:
         auth = AuthConfig.for_bearer("tok-123", sender_hint="bob")
         assert auth.bearer_token == "tok-123"
         assert auth.sender_hint == "bob"
-        assert auth.agent_id is None
         assert auth.sender == "bob"
         assert auth.expected_sender is None
 
@@ -48,23 +44,17 @@ class TestAuthConfig:
         assert auth.sender_hint == "alice-envelope"
         assert auth.expected_sender == "alice"
 
-    def test_both_raises(self):
-        with pytest.raises(ValueError, match="either"):
-            AuthConfig(bearer_token="tok", agent_id="id")
-
-    def test_neither_raises(self):
-        with pytest.raises(ValueError, match="either"):
+    def test_missing_bearer_raises(self):
+        with pytest.raises(ValueError, match="bearer_token is required"):
             AuthConfig()
 
     def test_metadata_dev_agent(self):
         auth = AuthConfig.for_dev_agent("alice")
-        headers = auth.metadata()
-        assert ("x-macp-agent-id", "alice") in headers
+        assert auth.metadata() == [("authorization", "Bearer alice")]
 
     def test_metadata_bearer(self):
         auth = AuthConfig.for_bearer("tok-123")
-        headers = auth.metadata()
-        assert ("authorization", "Bearer tok-123") in headers
+        assert auth.metadata() == [("authorization", "Bearer tok-123")]
 
     def test_metadata_bearer_is_stable(self):
         """Repeated metadata() calls return the same bearer header (no drift)."""
@@ -74,4 +64,4 @@ class TestAuthConfig:
     def test_frozen(self):
         auth = AuthConfig.for_dev_agent("alice")
         with pytest.raises(AttributeError):
-            auth.agent_id = "bob"  # type: ignore[misc]
+            auth.bearer_token = "bob"  # type: ignore[misc]

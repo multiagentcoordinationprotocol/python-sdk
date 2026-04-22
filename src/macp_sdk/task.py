@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 from macp.modes.task.v1 import task_pb2
@@ -213,7 +214,7 @@ class TaskSession(BaseSession):
         assert isinstance(self.projection, TaskProjection)
         return self.projection
 
-    def request(
+    def request_task(
         self,
         task_id: str,
         title: str,
@@ -225,6 +226,9 @@ class TaskSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> envelope_pb2.Ack:
+        """Send a TaskRequest envelope. Canonical name across SDKs
+        (parity with TypeScript ``requestTask``).
+        """
         payload = task_pb2.TaskRequestPayload(
             task_id=task_id,
             title=title,
@@ -241,6 +245,15 @@ class TaskSession(BaseSession):
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
+
+    def request(self, *args: object, **kwargs: object) -> envelope_pb2.Ack:
+        """Deprecated alias for :meth:`request_task`."""
+        warnings.warn(
+            "TaskSession.request() is deprecated; use request_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.request_task(*args, **kwargs)  # type: ignore[arg-type]
 
     def accept_task(
         self,
@@ -288,7 +301,7 @@ class TaskSession(BaseSession):
         )
         return self._send_and_track(envelope, auth=auth)
 
-    def update(
+    def update_task(
         self,
         task_id: str,
         *,
@@ -299,6 +312,9 @@ class TaskSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> envelope_pb2.Ack:
+        """Send a TaskUpdate envelope. Canonical name across SDKs
+        (parity with TypeScript ``updateTask``).
+        """
         payload = task_pb2.TaskUpdatePayload(
             task_id=task_id,
             status=status,
@@ -315,7 +331,16 @@ class TaskSession(BaseSession):
         )
         return self._send_and_track(envelope, auth=auth)
 
-    def complete(
+    def update(self, *args: object, **kwargs: object) -> envelope_pb2.Ack:
+        """Deprecated alias for :meth:`update_task`."""
+        warnings.warn(
+            "TaskSession.update() is deprecated; use update_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.update_task(*args, **kwargs)  # type: ignore[arg-type]
+
+    def complete_task(
         self,
         task_id: str,
         *,
@@ -325,6 +350,9 @@ class TaskSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> envelope_pb2.Ack:
+        """Send a TaskComplete envelope. Canonical name across SDKs
+        (parity with TypeScript ``completeTask``).
+        """
         payload = task_pb2.TaskCompletePayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender, auth=auth),
@@ -340,7 +368,16 @@ class TaskSession(BaseSession):
         )
         return self._send_and_track(envelope, auth=auth)
 
-    def fail(
+    def complete(self, *args: object, **kwargs: object) -> envelope_pb2.Ack:
+        """Deprecated alias for :meth:`complete_task`."""
+        warnings.warn(
+            "TaskSession.complete() is deprecated; use complete_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.complete_task(*args, **kwargs)  # type: ignore[arg-type]
+
+    def fail_task(
         self,
         task_id: str,
         *,
@@ -351,6 +388,9 @@ class TaskSession(BaseSession):
         sender: str | None = None,
         auth: AuthConfig | None = None,
     ) -> envelope_pb2.Ack:
+        """Send a TaskFail envelope. Canonical name across SDKs
+        (parity with TypeScript ``failTask``).
+        """
         payload = task_pb2.TaskFailPayload(
             task_id=task_id,
             assignee=assignee or self._sender_for(sender, auth=auth),
@@ -366,3 +406,12 @@ class TaskSession(BaseSession):
             payload=serialize_message(payload),
         )
         return self._send_and_track(envelope, auth=auth)
+
+    def fail(self, *args: object, **kwargs: object) -> envelope_pb2.Ack:
+        """Deprecated alias for :meth:`fail_task`."""
+        warnings.warn(
+            "TaskSession.fail() is deprecated; use fail_task() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.fail_task(*args, **kwargs)  # type: ignore[arg-type]

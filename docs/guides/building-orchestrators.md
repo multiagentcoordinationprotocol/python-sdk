@@ -80,7 +80,7 @@ def deployment_pipeline(client):
     # Stage 3: Task delegation
     task = TaskSession(client, auth=coordinator_auth)
     task.start(intent=f"deploy {winner}", participants=["coordinator", "deploy-agent"], ttl_ms=300_000)
-    task.request("t1", f"Deploy {winner}", instructions="...", requested_assignee="deploy-agent")
+    task.request_task("t1", f"Deploy {winner}", instructions="...", requested_assignee="deploy-agent")
     # ... wait for completion ...
 ```
 

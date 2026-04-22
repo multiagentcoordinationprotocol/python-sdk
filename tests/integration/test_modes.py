@@ -1,8 +1,7 @@
 """Integration tests for all MACP session modes against a live runtime.
 
-Requires a running MACP runtime on localhost:50051 with:
-  MACP_ALLOW_INSECURE=1
-  MACP_ALLOW_DEV_SENDER_HEADER=1
+Requires a running MACP runtime on localhost:50051 started with
+``MACP_ALLOW_INSECURE=1``.
 """
 
 from __future__ import annotations
@@ -174,13 +173,13 @@ class TestTaskMode:
         )
         assert ack.ok
 
-        ack = session.request("t1", "Build widget", instructions="build it")
+        ack = session.request_task("t1", "Build widget", instructions="build it")
         assert ack.ok
 
         ack = session.accept_task("t1", sender="worker", auth=_auth("worker"))
         assert ack.ok
 
-        ack = session.update(
+        ack = session.update_task(
             "t1",
             status="in_progress",
             progress=0.5,
@@ -190,7 +189,7 @@ class TestTaskMode:
         )
         assert ack.ok
 
-        ack = session.complete("t1", summary="done", sender="worker", auth=_auth("worker"))
+        ack = session.complete_task("t1", summary="done", sender="worker", auth=_auth("worker"))
         assert ack.ok
 
         ack = session.commit(
@@ -280,6 +279,6 @@ class TestQuorumMode:
         assert ack.ok
 
         proj = session.quorum_projection
-        assert proj.is_threshold_reached("r1")
+        assert proj.has_quorum("r1")
         assert proj.approval_count("r1") == 2
         assert proj.commitment is not None

@@ -24,6 +24,12 @@ from .errors import (
     MacpTransportError,
 )
 
+# Public typing alias for inline stream-error callbacks. Parity with
+# typescript-sdk's ``InlineErrorCallback``. Receives the protobuf
+# ``StreamError`` (or a legacy error object) for application-level errors
+# that do NOT tear down the stream — consumers typically log and continue.
+InlineErrorCallback = Callable[[Any], None]
+
 
 def _parse_ack_reasons(ack: object) -> list[str]:
     """Extract structured denial reasons from an ACK error's details."""
@@ -65,7 +71,7 @@ def _parse_grpc_metadata_reasons(rpc_error: grpc.RpcError) -> list[str]:
 
 def _default_capabilities() -> core_pb2.Capabilities:
     return core_pb2.Capabilities(
-        sessions=core_pb2.SessionsCapability(stream=True),
+        sessions=core_pb2.SessionsCapability(stream=True, list_sessions=True, watch_sessions=True),
         cancellation=core_pb2.CancellationCapability(cancel_session=True),
         progress=core_pb2.ProgressCapability(progress=True),
         manifest=core_pb2.ManifestCapability(get_manifest=True),
@@ -91,7 +97,7 @@ class MacpStream:
         self._requests: queue.Queue[object] = queue.Queue()
         self._responses: queue.Queue[object] = queue.Queue()
         self._closed = False
-        self._inline_error_callbacks: list[Callable[[Any], None]] = []
+        self._inline_error_callbacks: list[InlineErrorCallback] = []
         self._call = stub.StreamSession(self._request_iter(), metadata=metadata, timeout=timeout)
         self._thread = threading.Thread(target=self._pump_responses, daemon=True)
         self._thread.start()
@@ -142,7 +148,7 @@ class MacpStream:
         finally:
             self._responses.put(self._END)
 
-    def on_inline_error(self, callback: Callable[[Any], None]) -> None:
+    def on_inline_error(self, callback: InlineErrorCallback) -> None:
         """Register a callback for inline application-level stream errors."""
         self._inline_error_callbacks.append(callback)
 
@@ -207,7 +213,7 @@ class MacpClient:
         root_certificates: bytes | None = None,
         default_timeout: float | None = None,
         client_name: str = "macp-sdk-python",
-        client_version: str = "0.2.3",
+        client_version: str = "0.3.0",
     ) -> None:
         if secure is None:
             secure = not allow_insecure
@@ -414,6 +420,54 @@ class MacpClient:
             core_pb2.ListRootsRequest(),
             timeout=timeout or self.default_timeout,
         )
+
+    def list_sessions(
+        self,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> list[core_pb2.SessionMetadata]:
+        """List all active sessions known to the runtime.
+
+        Returns the populated ``sessions`` repeated field of
+        ``ListSessionsResponse`` as a plain ``list`` so callers don't have
+        to reach through the proto wrapper. Per runtime semantics each
+        entry includes ``context_id`` and ``extension_keys``.
+        """
+        auth_cfg = self._require_auth(auth)
+        resp = self.stub.ListSessions(
+            core_pb2.ListSessionsRequest(),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+        return list(resp.sessions)
+
+    def watch_sessions(
+        self,
+        *,
+        auth: AuthConfig | None = None,
+        timeout: float | None = None,
+    ) -> Iterator[core_pb2.WatchSessionsResponse]:
+        """Server-streaming RPC: yields session lifecycle events.
+
+        The runtime emits an initial ``EVENT_TYPE_CREATED`` frame for every
+        currently-open session, then live events as sessions transition
+        through ``CREATED``, ``RESOLVED``, and ``EXPIRED``. Each event
+        carries a full ``SessionMetadata`` (including ``context_id`` and
+        ``extension_keys``), so callers can project run state without a
+        follow-up ``get_session``.
+        """
+        logger.debug("watch_sessions starting")
+        auth_cfg = self._require_auth(auth)
+        call = self.stub.WatchSessions(
+            core_pb2.WatchSessionsRequest(),
+            metadata=self._metadata(auth_cfg),
+            timeout=timeout or self.default_timeout,
+        )
+        try:
+            yield from call
+        except grpc.RpcError as exc:
+            raise MacpTransportError(str(exc)) from exc
 
     def register_ext_mode(
         self,

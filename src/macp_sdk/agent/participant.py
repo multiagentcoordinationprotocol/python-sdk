@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from .._logging import logger
@@ -38,6 +39,38 @@ _MODE_PROJECTIONS: dict[str, type[BaseProjection]] = {
     MODE_TASK: TaskProjection,
     MODE_HANDOFF: HandoffProjection,
 }
+
+# Canonical set of terminal projection phases across all modes. Mirrors
+# ``TERMINAL_PHASES`` in typescript-sdk/src/agent/participant.ts so that both
+# SDKs fire ``on_terminal`` at the same observable point in a session. When a
+# mode introduces a new terminal phase, add it here and in the TypeScript SDK
+# in the same change.
+TERMINAL_PHASES: frozenset[str] = frozenset(
+    {"Committed", "Accepted", "Declined", "Cancelled", "TerminalRejected"}
+)
+
+
+@dataclass
+class InitiatorConfig:
+    """Configuration for an initiator agent's SessionStart + kickoff.
+
+    Parity with typescript-sdk's ``InitiatorConfig`` interface. Passed to
+    :class:`Participant` via ``initiator_config``; when set, the participant
+    emits ``SessionStart`` (and, if configured, a kickoff envelope) before
+    opening the stream.
+    """
+
+    intent: str
+    participants: list[str]
+    ttl_ms: int
+    context_id: str = ""
+    extensions: dict[str, bytes] = field(default_factory=dict)
+    roots: list[dict[str, str]] | None = None
+    mode_version: str | None = None
+    configuration_version: str | None = None
+    policy_version: str | None = None
+    kickoff_message_type: str | None = None
+    kickoff_payload: dict[str, Any] = field(default_factory=dict)
 
 
 class ParticipantActions:
@@ -264,7 +297,7 @@ class Participant:
         configuration_version: str | None = None,
         policy_version: str | None = None,
         transport: TransportAdapter | None = None,
-        initiator_config: Any | None = None,
+        initiator_config: InitiatorConfig | None = None,
     ) -> None:
         self._participant_id = participant_id
         self._session_id = session_id
@@ -299,6 +332,7 @@ class Participant:
         )
         self._last_phase: str | None = None
         self._transport = transport
+        self._cancel_callback_server: Any | None = None
 
     @property
     def participant_id(self) -> str:
@@ -353,58 +387,89 @@ class Participant:
         )
 
     def _process_envelope(self, envelope: Any) -> None:
-        """Process a single envelope: update projection, dispatch handlers."""
-        # Update the projection if available
+        """Process a single envelope: apply projection, dispatch handlers,
+        and fire phase-change / terminal handlers on phase transitions.
+
+        Terminal dispatch is primarily driven by projection phase
+        transitioning into :data:`TERMINAL_PHASES` — matches TypeScript SDK
+        semantics so both SDKs fire ``on_terminal`` at the same observable
+        point. As a fallback (for envelopes projections don't model — e.g.
+        ``SessionCancel``), we fire terminal on the message type itself so
+        clients always get a ``stop`` signal for end-of-session envelopes.
+        """
         if self._projection is not None:
             self._projection.apply_envelope(envelope)
 
-        # Check for terminal messages
-        if envelope.message_type == "Commitment":
-            result = TerminalResult(
-                state="Committed",
-                commitment=envelope,
-            )
-            self._dispatcher.dispatch_terminal(result)
-            self._stopped = True
-            return
-
-        if envelope.message_type == "SessionCancel":
-            result = TerminalResult(state="Cancelled")
-            self._dispatcher.dispatch_terminal(result)
-            self._stopped = True
-            return
-
-        # Build the message and context
         message = _envelope_to_message(envelope)
         ctx = self._build_context()
 
-        # Dispatch message handler
+        # Dispatch message handler first, so handlers see the post-apply
+        # projection state.
         self._dispatcher.dispatch(message, ctx)
 
-        # Check for phase changes
+        fired_terminal = False
+
+        # Phase transition path — drives both on_phase_change and on_terminal.
         if self._projection is not None:
             current_phase = self._projection.phase
             if current_phase and current_phase != self._last_phase:
-                self._dispatcher.dispatch_phase_change(current_phase, ctx)
                 self._last_phase = current_phase
+                self._dispatcher.dispatch_phase_change(current_phase, ctx)
+
+                if current_phase in TERMINAL_PHASES:
+                    commitment = getattr(self._projection, "commitment", None)
+                    result = TerminalResult(
+                        state=current_phase,
+                        commitment=commitment
+                        if commitment is not None
+                        else envelope
+                        if envelope.message_type == "Commitment"
+                        else None,
+                    )
+                    self._dispatcher.dispatch_terminal(result)
+                    self._stopped = True
+                    fired_terminal = True
+
+        # Fallback for envelopes projections don't transition phase on —
+        # principally ``SessionCancel``. Keeps terminal dispatch reliable
+        # while the phase-driven path remains primary.
+        if not fired_terminal and envelope.message_type == "SessionCancel":
+            self._dispatcher.dispatch_terminal(TerminalResult(state="Cancelled"))
+            self._stopped = True
 
     def _process_message(self, message: IncomingMessage) -> None:
-        """Process a pre-built IncomingMessage (from HTTP transport)."""
+        """Process a pre-built :class:`IncomingMessage` (from an HTTP polling
+        transport that decodes envelopes upstream).
+
+        Terminal dispatch follows the same phase-driven model as
+        :meth:`_process_envelope`; since HTTP transports may not carry raw
+        envelopes, we fall back to a message-type check for terminal events
+        only when no projection is attached.
+        """
         ctx = self._build_context()
 
-        if message.message_type == "Commitment":
-            result = TerminalResult(state="Committed")
-            self._dispatcher.dispatch_terminal(result)
-            self._stopped = True
-            return
-
-        if message.message_type == "SessionCancel":
-            result = TerminalResult(state="Cancelled")
-            self._dispatcher.dispatch_terminal(result)
-            self._stopped = True
-            return
-
         self._dispatcher.dispatch(message, ctx)
+
+        if self._projection is not None:
+            current_phase = self._projection.phase
+            if current_phase and current_phase != self._last_phase:
+                self._last_phase = current_phase
+                self._dispatcher.dispatch_phase_change(current_phase, ctx)
+
+                if current_phase in TERMINAL_PHASES:
+                    commitment = getattr(self._projection, "commitment", None)
+                    result = TerminalResult(state=current_phase, commitment=commitment)
+                    self._dispatcher.dispatch_terminal(result)
+                    self._stopped = True
+            return
+
+        # No projection attached — use message-type heuristic for terminal.
+        if message.message_type == "Commitment":
+            self._dispatcher.dispatch_terminal(TerminalResult(state="Committed"))
+            self._stopped = True
+        elif message.message_type == "SessionCancel":
+            self._dispatcher.dispatch_terminal(TerminalResult(state="Cancelled"))
+            self._stopped = True
 
     def run(self) -> None:
         """Enter the blocking event loop.
@@ -453,6 +518,7 @@ class Participant:
             participants=cfg.participants,
             ttl_ms=cfg.ttl_ms,
             context_id=cfg.context_id,
+            extensions=cfg.extensions or None,
             mode_version=cfg.mode_version,
             configuration_version=cfg.configuration_version,
             policy_version=cfg.policy_version,
@@ -476,5 +542,25 @@ class Participant:
         self._process_envelope(envelope)
 
     def stop(self) -> None:
-        """Signal the event loop to stop."""
+        """Signal the event loop to stop.
+
+        Also shuts down a bound cancel-callback HTTP server (if one was
+        started by :func:`from_bootstrap` for this participant).
+        """
         self._stopped = True
+        server = self._cancel_callback_server
+        if server is not None:
+            self._cancel_callback_server = None
+            try:
+                server.close()
+            except Exception:
+                logger.exception("cancel_callback server close failed")
+
+    def attach_cancel_callback_server(self, server: Any) -> None:
+        """Attach a :class:`CancelCallbackServer` to this participant.
+
+        The server's lifetime is then tied to :meth:`stop` — the event
+        loop exit (or an incoming cancel POST that calls ``stop``) shuts
+        it down.
+        """
+        self._cancel_callback_server = server

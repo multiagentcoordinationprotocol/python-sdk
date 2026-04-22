@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.3.0 (2026-04-21)
+
+Session discovery surface: the SDK now wraps the runtime's
+``ListSessions`` and ``WatchSessions`` RPCs, so Python orchestrators
+and supervisor agents can enumerate active sessions and react to
+``CREATED`` / ``RESOLVED`` / ``EXPIRED`` lifecycle events without
+polling ``GetSession``. Parity with ``macp-sdk-typescript`` 0.3.0.
+
+### Added
+
+- **``MacpClient.list_sessions()``** (SDK-PY-2) — unary RPC returning
+  ``list[SessionMetadata]``; each entry includes the ``context_id``
+  and ``extension_keys`` the runtime projects from the accepted
+  SessionStart payload.
+- **``MacpClient.watch_sessions()``** (SDK-PY-3) — server-streaming
+  RPC yielding ``WatchSessionsResponse`` frames.
+- **``SessionLifecycleWatcher`` + ``SessionLifecycle``** (SDK-PY-3)
+  in ``macp_sdk.watchers`` — high-level wrapper mirroring the existing
+  ``PolicyWatcher`` pattern. Event-type integers are normalised to
+  short string names (``CREATED`` / ``RESOLVED`` / ``EXPIRED``), with
+  ``is_created``/``is_resolved``/``is_expired``/``is_terminal``
+  convenience predicates. Exported from ``macp_sdk`` package root.
+- **SDK-PY-6 — bootstrap ``cancel_callback`` now wired**
+  (RFC-0001 §7.2 Option A). When ``bootstrap.cancel_callback =
+  {host, port, path}`` is present, ``from_bootstrap`` spins up a
+  stdlib-only HTTP daemon bound to ``participant.stop()`` and attaches
+  it to the participant; a ``POST`` with ``{runId, reason}`` shuts the
+  agent down cleanly. New public helpers on ``macp_sdk.agent``:
+  ``start_cancel_callback_server`` + ``CancelCallbackServer``.
+
+### Changed
+
+- **SDK-PY-4**: ``_default_capabilities()`` now advertises
+  ``SessionsCapability(stream=True, list_sessions=True,
+  watch_sessions=True)``.
+- **SDK-PY-5 — ``AuthConfig.for_dev_agent`` now emits
+  ``Authorization: Bearer <agent_id>``**. The runtime's
+  ``dev_authenticate`` fallback binds the token value verbatim as the
+  sender, so participant lists keep working unchanged. Requires
+  runtime ≥ 0.4.0.
+- **``AuthConfig.agent_id`` field removed**. Construct directly with
+  ``AuthConfig(bearer_token=...)`` or use the
+  ``for_dev_agent`` / ``for_bearer`` classmethods.
+
 ## 0.2.3 (unreleased)
 
 Streaming-path uplift: non-initiator agents no longer miss
@@ -24,6 +68,18 @@ opens after the initiator has already published them.
 - ``tests/unit/test_agent_transports.py`` — two new assertions that
   verify ``GrpcTransportAdapter`` subscribes before consuming
   responses.
+- **SDK-PY-1 — ``InitiatorConfig.extensions``** (``dict[str, bytes]``)
+  is now threaded through ``from_bootstrap`` and
+  ``Participant._emit_initiator_envelopes()`` onto
+  ``SessionStartPayload.extensions``. Bootstrap JSON carries each
+  value as canonical proto-JSON base64; the loader decodes it back to
+  bytes. Matches the Rust runtime's opaque ``map<string, bytes>``
+  storage (see ``runtime/src/runtime.rs::process_session_start``);
+  keys surface on ``SessionMetadata.extension_keys`` for the
+  control-plane projection (CP-17).
+- ``tests/unit/test_agent_participant.py`` (4 tests) covering the
+  base64 decode, absent-key default, action-level extension
+  forwarding, and the empty-dict → ``None`` normalisation path.
 
 ### Changed
 
