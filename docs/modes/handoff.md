@@ -6,6 +6,8 @@
 
 Transfer scoped responsibility or authority from one agent (current owner) to another (target participant).
 
+> **Runtime semantics:** the serial-offer constraint and late-context handling are defined in [Runtime Modes § Handoff Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#handoff-mode). This page covers the SDK API.
+
 ## When to use
 
 Use Handoff mode when ownership or responsibility needs to transfer between agents:
@@ -44,22 +46,9 @@ Commitment → RESOLVED
 - HandoffContext attaches supplemental information (runbooks, credentials, state) to an offer
 - Only one Commitment resolves the session
 
-## Authorization rules
+## Authorization & termination
 
-| Message | Who can send |
-|---------|-------------|
-| HandoffOffer | Session initiator (current owner) |
-| HandoffContext | Session initiator (current owner) |
-| HandoffAccept | Target participant only |
-| HandoffDecline | Target participant only |
-| Commitment | Session initiator (current owner) |
-
-## Terminal conditions
-
-A session becomes eligible for Commitment when:
-
-1. The target **accepts** or **declines** the offer
-2. The owner commits, recording whether the handoff was accepted or rejected
+Per-message authorization (only the target can `Accept`/`Decline`) and commitment-readiness rules are defined in [Runtime Modes § Handoff Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#handoff-mode).
 
 ## Session helper
 

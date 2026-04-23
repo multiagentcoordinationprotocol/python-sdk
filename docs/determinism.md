@@ -1,76 +1,29 @@
 # Determinism and Replay
 
-MACP provides formal determinism guarantees that enable reliable session replay, audit verification, and distributed state reconstruction. Understanding these guarantees is essential for building robust multi-agent systems.
+MACP defines formal determinism guarantees that enable session replay, audit verification, and distributed state reconstruction. The SDK relies on those guarantees but does not define them — they are protocol-level. This page focuses on what an SDK user needs to do (version binding, replay testing) and links out for the rest.
 
-## Structural replay integrity (Core guarantee)
+- Protocol spec: [Determinism](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol/blob/main/docs/determinism.md)
+- Per-mode determinism class: [Runtime Modes](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md)
+- Replay enforcement: [Runtime Architecture § Durability model](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md#durability-model)
 
-MACP Core guarantees that replaying identical accepted envelope sequences under identical:
+## Determinism classes — at a glance
 
-- `macp_version`
-- Mode identifier and mode version
-- `configuration_version`
-- `policy_version`
+Each mode declares a determinism class. The SDK does not enforce these — the runtime does — but they govern what you can assume on replay:
 
-will reproduce **identical state transitions** (OPEN → RESOLVED or OPEN → EXPIRED).
+| Class | Modes | Replay guarantee |
+|-------|-------|------------------|
+| `semantic-deterministic` | Decision, Proposal, Quorum | same envelopes → same semantic outcome |
+| `structural-only` | Task | same envelopes → same lifecycle, outcomes may differ |
+| `context-frozen` | Handoff | same envelopes + same frozen context → same outcome |
+| `non-deterministic` | (extension modes) | structural transitions only |
 
-This is the baseline guarantee: the session lifecycle is deterministic regardless of mode.
+Full definitions: [Protocol Determinism](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol/blob/main/docs/determinism.md).
 
-## Determinism classes
+## Version binding (SDK responsibility)
 
-Each mode declares a determinism class that specifies what additional guarantees it provides:
-
-### `semantic-deterministic`
-
-**Modes:** Decision, Proposal, Quorum
-
-Same accepted history → same semantic outcome. The mode's logic is fully determined by the envelope sequence. No time-dependent logic beyond TTL, no external I/O.
-
-```
-replay(same envelopes) → same proposals, same votes, same commitment
-```
-
-This is the strongest guarantee. If you replay a Decision session's transcript, you will get the same winner with the same vote counts.
-
-### `structural-only`
-
-**Modes:** Task
-
-Core replay is preserved (state transitions are deterministic), but semantic outcomes are **not guaranteed**. The Task mode coordinates external execution that may produce different results.
-
-```
-replay(same envelopes) → same session lifecycle, but output may differ
-```
-
-The Commitment documents the *intended* outcome, but the actual task execution is external to MACP.
-
-### `context-frozen`
-
-**Modes:** Handoff
-
-Determinism depends on the exact bound context at SessionStart. Same messages + same frozen context = same outcome, but the frozen context must be reproduced exactly.
-
-```
-replay(same envelopes + same context) → same handoff result
-```
-
-### `non-deterministic`
-
-No guarantees beyond structural. Modes that call external APIs with unpredictable results or use randomness. Replay may produce different outcomes.
-
-## Version binding
-
-Sessions bind three versions at `SessionStart` that **cannot change** during the session:
-
-| Version | Purpose |
-|---------|---------|
-| `mode_version` | Which mode semantics apply |
-| `configuration_version` | Which execution profile is active |
-| `policy_version` | Which governance rules apply |
-
-This ensures that replaying a session uses the same rules that applied when the session was live. Different versions create different sessions.
+Three versions are bound at `SessionStart` and cannot change for the life of the session. The SDK passes them through verbatim — pin them explicitly when the session is part of an audit trail:
 
 ```python
-# Version binding happens automatically in session helpers:
 session = DecisionSession(
     client,
     mode_version="1.0.0",
@@ -79,13 +32,13 @@ session = DecisionSession(
 )
 ```
 
+Different versions produce different sessions; replay uses the bound versions, not whatever is current.
+
 ## External side effects
 
-When modes trigger actions beyond the session boundary (deploying code, sending emails, transferring funds), MACP defines patterns to preserve determinism:
+When a mode triggers actions outside the session (deployments, payments, emails), use the established protocol patterns to keep replay meaningful — *plan-then-execute*, *log external results*, or *idempotent external transactions*. See [Protocol Determinism § External side effects](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol/blob/main/docs/determinism.md) for the canonical guidance.
 
-### Pattern 1: Plan then execute
-
-The session produces a Commitment with an execution plan. External execution happens *after* the session resolves, using idempotency keys to prevent duplicate execution.
+The SDK supports the *plan-then-execute* pattern naturally — the Commitment carries the plan and an idempotency key:
 
 ```python
 session.commit(
@@ -93,34 +46,24 @@ session.commit(
     authority_scope="release",
     reason="approved with idempotency_key=deploy-v2.1-20250329",
 )
-# External system uses the idempotency key to prevent double-deploy
 ```
 
-### Pattern 2: Log external results
+## Testing determinism in Python
 
-Side-effect results are recorded as accepted session messages. On replay, the logged results are used instead of re-executing the external call.
-
-### Pattern 3: Idempotent external transactions
-
-External systems accept transaction IDs and guarantee that repeated attempts with the same ID produce no additional side effects.
-
-## Testing determinism
-
-You can verify replay correctness by recording a session transcript and replaying it:
+Verify replay correctness by recording the transcript and feeding it through a fresh projection:
 
 ```python
-# Record the transcript during a session
+# Record during a live session
 transcript = session.projection.transcript
 
-# Later, replay against a new projection
+# Replay against a new projection
 from macp_sdk.projections import DecisionProjection
 replay = DecisionProjection()
 for envelope in transcript:
     replay.apply_envelope(envelope)
 
-# Verify same outcome
 assert replay.majority_winner() == original_winner
 assert replay.is_committed == original_committed
 ```
 
-For modes with `semantic-deterministic` class, the replayed projection will always match the original.
+For `semantic-deterministic` modes, the replayed projection must match the original. Build this into your test suite for any orchestrator that depends on replay.

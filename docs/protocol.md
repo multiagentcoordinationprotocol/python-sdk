@@ -1,81 +1,58 @@
 # Core Protocol Concepts
 
-This page covers the foundational MACP protocol concepts that every SDK user should understand. For the full specification, see the [MACP RFCs](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol).
+This page is a quick orientation for SDK users. It covers only what you need to read SDK code without surprises. The runtime docs are authoritative for protocol semantics — links are inline below.
+
+- Protocol spec: [MACP RFCs](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol)
+- Runtime overview: [Runtime README](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/README.md)
+- RPC reference: [Runtime API](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md)
+- SDK-author guide: [Runtime SDK Guide](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md)
 
 ## Two planes of communication
 
 MACP separates all agent communication into two planes:
 
-**Ambient Plane (Signals)** — Continuous, non-binding informational messages. Signals do not create sessions, mutate state, or produce binding outcomes. They may be handled ephemerally.
+- **Ambient Plane (Signals)** — Continuous, non-binding informational messages. Signals do not create sessions, mutate state, or produce binding outcomes.
+- **Coordination Plane (Sessions)** — Bounded, explicit, binding coordination. All coordination that produces binding outcomes must happen inside a session.
 
-**Coordination Plane (Sessions)** — Bounded, explicit, binding coordination. All coordination that produces binding outcomes must happen inside a session. Sessions have monotonic lifecycles, durable history, and replay-capable transcripts.
+The core invariant: *binding coordination MUST occur inside explicit, bounded Coordination Sessions*.
 
-This separation is the core invariant: *binding coordination MUST occur inside explicit, bounded Coordination Sessions*.
+## Envelopes
 
-## The Envelope
+Every message is a canonical `Envelope`. The SDK builds envelopes for you via `build_envelope()` and the session helpers — you rarely construct one by hand.
 
-Every MACP message is wrapped in a canonical `Envelope`:
+For the wire-level field list and validation rules, see [Runtime SDK Guide § Building envelopes](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md#building-envelopes).
 
-```
-Envelope {
-    macp_version        # Protocol version ("1.0")
-    mode                # Mode URI (empty for Signals)
-    message_type        # "SessionStart", "Proposal", "Vote", etc.
-    message_id          # Unique within session (idempotency key)
-    session_id          # Empty for Signals, non-empty for coordinated
-    sender              # Authenticated identity (runtime-derived, never self-asserted)
-    timestamp_unix_ms   # Informational only
-    payload             # Mode-specific protobuf bytes
-}
-```
+Two SDK-relevant invariants worth knowing:
 
-The SDK's `build_envelope()` and session helpers handle envelope construction automatically.
-
-### Idempotency
-
-Each envelope carries a unique `message_id`. The runtime deduplicates by `message_id` within a session — sending the same `message_id` twice is a no-op (returns `duplicate=true` in the Ack). This is the foundation for safe retries.
-
-### Sender identity
-
-The `sender` field is **derived from the authenticated identity**, not self-asserted. The runtime overwrites any `sender` value with the identity from the auth credentials. The SDK resolves the sender through `AuthConfig.sender`.
+- **Idempotency** — each envelope carries a unique `message_id`. The runtime deduplicates within a session, so retries with the same `message_id` are safe (Ack returns `duplicate=true`). This is what makes [`retry_send()`](api/index.md) safe.
+- **Sender identity is runtime-derived** — the `sender` field is bound from your authenticated identity, never self-asserted. The SDK fills it in from `AuthConfig`; the runtime validates it. See [Authentication](auth.md).
 
 ## Session lifecycle
 
-Sessions follow a monotonic finite state machine:
+The state machine (`OPEN → RESOLVED | EXPIRED`), monotonic transitions, and terminal-message rules are defined and enforced by the runtime. See [Runtime API § Session Lifecycle](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#session-lifecycle) and [Runtime Architecture § Coordination Kernel](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md#layers).
 
-```
-[*] ──→ OPEN ──→ RESOLVED ──→ [*]
-              ╲
-               ──→ EXPIRED ──→ [*]
-```
-
-| State | Meaning |
-|-------|---------|
-| **OPEN** | Session is active, accepting messages |
-| **RESOLVED** | Terminal — a Commitment was accepted |
-| **EXPIRED** | Terminal — TTL elapsed, or session was cancelled |
-
-**Key rules:**
-
-- Transitions are **monotonic** — a session can only move forward, never backward
-- Only **Commitment** messages resolve a session (OPEN → RESOLVED)
-- TTL expiry and `CancelSession` produce EXPIRED
-- The runtime enforces these transitions; the SDK tracks them via projections
+The SDK tracks the lifecycle locally via projections — see [Architecture § Why projections exist](architecture.md#why-projections-exist).
 
 ### SessionStart
 
-Every session begins with a `SessionStart` envelope that declares:
+Every session begins with a `SessionStart` envelope. The SDK exposes its fields directly on `BaseSession.start(...)`:
 
-- **intent** — Human-readable purpose
-- **participants** — Declared agent IDs
-- **ttl_ms** — Maximum session lifetime (1ms–86,400,000ms / 24h)
-- **mode_version** — Which mode semantics to use
-- **configuration_version** — Which execution profile
-- **policy_version** — Which governance rules (optional)
-- **context** — Optional bound context (bytes/string/JSON)
-- **roots** — Optional coordination boundaries
+```python
+session.start(
+    intent="pick a deployment plan",
+    participants=["coordinator", "alice", "bob"],
+    ttl_ms=60_000,
+    mode_version="1.0.0",
+    configuration_version="org-2025.q4",
+    policy_version="procurement-v3",      # optional
+    context_id="release-2025-q4-deploy",   # optional
+    extensions={"aitp": b"..."},           # optional opaque blobs
+)
+```
 
-These versions are **bound at SessionStart** and cannot change during the session.
+`mode_version`, `configuration_version`, and `policy_version` are **bound at SessionStart and cannot change** during the session — see [Determinism](determinism.md).
+
+`context_id` and the *keys* of `extensions` are projected onto every `SessionMetadata` returned by `GetSession`/`ListSessions`/`WatchSessions` — values stay opaque. Use this for protocol-extension signalling without parsing payloads. See [Session Discovery](guides/session-discovery.md).
 
 ### Commitment
 
@@ -89,51 +66,26 @@ session.commit(
 )
 ```
 
-Commitments carry an `authority_scope` that declares under what authority the action is taken. Only authorized senders can emit Commitments (typically the session initiator or coordinator).
-
-## Accepted-history discipline
-
-All accepted envelopes form an **immutable, append-only session log** — the authoritative ordered transcript. This enables:
-
-- **Replay** for determinism verification
-- **Audit** for compliance
-- **Debugging** for post-incident analysis
-- **State reconstruction** from transcript
-
-!!! note "Acceptance order is authoritative order"
-    In a distributed system with multiple senders, "order" means **runtime acceptance order**, not sender transmission order. The runtime defines a single, durable, replayable total order per session.
+Who is authorised to commit is governed by the runtime's policy engine — see [Runtime Policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md#commitment-authority). By default, only the session initiator can commit.
 
 ## Capabilities and initialization
 
-Before any session work, the client negotiates capabilities with the runtime via the `Initialize` RPC:
+Before any session work, call `Initialize` to negotiate capabilities:
 
 ```python
 response = client.initialize()
 # response.selected_protocol_version  → "1.0"
 # response.capabilities               → what the runtime supports
-# response.supported_modes             → available mode URIs
+# response.supported_modes            → available mode URIs
 ```
 
-The SDK advertises standard capabilities during initialization. The runtime responds with its supported features, including which modes are available.
+Field-level details: [Runtime API § Protocol Handshake](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#protocol-handshake).
 
-## Error model
+## Errors
 
-The runtime returns structured errors with RFC-defined codes:
+The runtime returns structured errors with RFC-defined codes (`UNAUTHENTICATED`, `FORBIDDEN`, `SESSION_NOT_FOUND`, `SESSION_NOT_OPEN`, `DUPLICATE_MESSAGE`, `INVALID_ENVELOPE`, `MODE_NOT_SUPPORTED`, `PAYLOAD_TOO_LARGE`, `RATE_LIMITED`, `INTERNAL_ERROR`). The full table with HTTP status mappings lives in [Runtime API § Message Transport](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#message-transport) and [Runtime SDK Guide § Error handling](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md#error-handling).
 
-| Code | HTTP | When |
-|------|------|------|
-| `UNAUTHENTICATED` | 401 | Authentication failed |
-| `FORBIDDEN` | 403 | Not authorized for this session/message |
-| `SESSION_NOT_FOUND` | 404 | Session doesn't exist |
-| `SESSION_NOT_OPEN` | 409 | Session is RESOLVED or EXPIRED |
-| `DUPLICATE_MESSAGE` | 409 | `message_id` already accepted |
-| `INVALID_ENVELOPE` | 400 | Envelope validation failed |
-| `MODE_NOT_SUPPORTED` | 400 | Mode/version not available |
-| `PAYLOAD_TOO_LARGE` | 413 | Exceeds size limits (default 1MB) |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `INTERNAL_ERROR` | 500 | Unrecoverable runtime error |
-
-The SDK maps these to Python exceptions:
+The SDK maps them to Python exceptions:
 
 ```python
 from macp_sdk import MacpAckError, MacpTransportError
@@ -147,28 +99,31 @@ except MacpTransportError as e:
     print(e)                  # gRPC transport failure
 ```
 
-!!! tip "Retryable errors"
-    `RATE_LIMITED` and `INTERNAL_ERROR` are transient — use `retry_send()` with a `RetryPolicy` for automatic exponential backoff. `FORBIDDEN`, `SESSION_NOT_FOUND`, and `INVALID_ENVELOPE` are permanent and should not be retried.
+For retry behaviour and which codes are safe to retry, see [Error Handling](guides/error-handling.md) and `RetryPolicy` in the [API Reference](api/index.md).
 
 ## Discovery
 
-The runtime exposes discovery RPCs for introspection:
+The runtime exposes discovery RPCs the SDK wraps as sync methods (unary) or iterators (server-streaming). See [Runtime API § Discovery](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#discovery) and [§ Streaming Watches](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#streaming-watches) for the underlying RPCs.
+
+### Unary
 
 ```python
-# List available standard modes
-modes = client.list_modes()
-for desc in modes.modes:
-    print(f"{desc.mode} — {desc.title}")
-
-# Get runtime/agent manifest
-manifest = client.get_manifest()
-print(manifest.manifest.description)
-
-# List registered extension modes
-ext_modes = client.list_ext_modes()
-
-# List coordination roots
-roots = client.list_roots()
+modes      = client.list_modes()       # standard modes
+manifest   = client.get_manifest()     # runtime/agent manifest
+ext_modes  = client.list_ext_modes()   # registered extension modes
+roots      = client.list_roots()
+sessions   = client.list_sessions()    # SDK ≥ 0.3.0
+policies   = client.list_policies()
 ```
 
-These are useful for building dynamic orchestrators that adapt to the runtime's capabilities.
+### Server-streaming (watchers)
+
+The SDK wraps each server-streaming RPC in a `*Watcher` that normalises responses into typed records. See [Streaming](guides/streaming.md) and [Session Discovery](guides/session-discovery.md) for usage.
+
+| RPC | Watcher | Yields |
+|-----|---------|--------|
+| `WatchModeRegistry` | `ModeRegistryWatcher` | Registry diff events |
+| `WatchRoots` | `RootsWatcher` | Root diff events (runtime currently idles) |
+| `WatchPolicies` | `PolicyWatcher` | `PolicyChange(descriptors, observed_at_unix_ms)` |
+| `WatchSessions` | `SessionLifecycleWatcher` | `SessionLifecycle` (`CREATED`/`RESOLVED`/`EXPIRED`) |
+| `WatchSignals` | `SignalWatcher` | Ambient-plane signal envelopes |

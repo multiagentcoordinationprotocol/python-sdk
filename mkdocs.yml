@@ -29,6 +29,8 @@ nav:
   - Guides:
       - Error Handling & Retry: guides/error-handling.md
       - Streaming: guides/streaming.md
+      - Session Discovery: guides/session-discovery.md
+      - Agent Framework: guides/agent-framework.md
       - Building Orchestrators: guides/building-orchestrators.md
       - Direct Agent Auth: guides/direct-agent-auth.md
   - Auth: auth.md

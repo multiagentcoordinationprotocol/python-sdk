@@ -6,6 +6,8 @@
 
 Bounded task delegation from a requester to an assignee. The requester defines work; the assignee accepts, executes, and reports results.
 
+> **Runtime semantics:** assignment lifecycle, the `allow_reassignment_on_reject` policy rule, and terminal-report rules are defined in [Runtime Modes § Task Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#task-mode). This page covers the SDK API.
+
 ## When to use
 
 Use Task mode when one agent needs to delegate bounded work to another:
@@ -52,24 +54,9 @@ Commitment → RESOLVED
 - TaskComplete/TaskFail do **not** resolve the session — only Commitment does
 - The requester commits after reviewing the terminal report
 
-## Authorization rules
+## Authorization & termination
 
-| Message | Who can send |
-|---------|-------------|
-| TaskRequest | Session initiator (requester) |
-| TaskAccept | Requested assignee (or any eligible participant) |
-| TaskReject | Requested assignee (or any eligible participant) |
-| TaskUpdate | Active assignee only |
-| TaskComplete | Active assignee only |
-| TaskFail | Active assignee only |
-| Commitment | Session initiator (requester) |
-
-## Terminal conditions
-
-A session becomes eligible for Commitment when:
-
-1. The assignee reports **TaskComplete** or **TaskFail**, AND
-2. The requester decides to commit (accepting or acknowledging the result)
+Per-message authorization and commitment-readiness rules are defined in [Runtime Modes § Task Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#task-mode). The runtime validates "active assignee" against the authenticated sender, not a payload field — spoofed assignees fail at transport.
 
 ## Session helper
 

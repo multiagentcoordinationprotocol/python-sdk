@@ -1,6 +1,6 @@
 # Building Orchestrators
 
-The SDK provides typed action builders and state projections. **Policy logic** — voting rules, decision strategies, AI heuristics — belongs in the **orchestrator layer** above the SDK.
+The SDK provides typed action builders and state projections. **Policy logic** — voting rules, decision strategies, AI heuristics — belongs in the **orchestrator layer** above the SDK. (Note: the runtime also exposes a *governance* policy engine that evaluates declarative rules at commitment time — see [Runtime Policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md). Use it to enforce hard constraints like quorum thresholds or veto rights; keep dynamic strategy logic in your orchestrator.)
 
 ## Architecture reminder
 
@@ -83,6 +83,37 @@ def deployment_pipeline(client):
     task.request_task("t1", f"Deploy {winner}", instructions="...", requested_assignee="deploy-agent")
     # ... wait for completion ...
 ```
+
+## Pattern: Supervisor / observer
+
+Use `list_sessions()` + `SessionLifecycleWatcher` to build a supervisor that
+tracks every session a tenant/agent can see — no need to pre-register session
+ids or poll `GetSession`:
+
+```python
+from macp_sdk import MacpClient, AuthConfig, SessionLifecycleWatcher
+
+supervisor = MacpClient(
+    target="runtime:50051",
+    auth=AuthConfig.for_bearer("tok-supervisor", expected_sender="supervisor"),
+)
+supervisor.initialize()
+
+# Snapshot on startup
+for meta in supervisor.list_sessions():
+    print("seen", meta.session_id, meta.mode, meta.state)
+
+# React to live events
+for ev in SessionLifecycleWatcher(supervisor).changes():
+    if ev.is_created:
+        spawn_monitor(ev.session.session_id)
+    elif ev.is_terminal:
+        reconcile(ev.session.session_id, ev.event_type)
+```
+
+The runtime emits an initial `CREATED` event for each already-open session at
+subscribe time, so the watcher is safe to (re)start at any point — you won't
+miss live sessions.
 
 ## Pattern: Event-driven orchestrator
 
