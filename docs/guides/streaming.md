@@ -1,6 +1,6 @@
 # Streaming
 
-The SDK supports several streaming patterns for real-time coordination.
+The SDK supports several streaming patterns for real-time coordination. For the runtime side — `StreamSession` semantics, replay (`subscribe_session_id` / `after_sequence`), backpressure, and the watcher RPC contracts — see [Runtime SDK Guide § Streaming](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md#streaming) and [Runtime API § Streaming Watches](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#streaming-watches).
 
 ## Bidirectional session streaming (MacpStream)
 
@@ -50,7 +50,7 @@ stream.close()
 
 - `send()` puts envelopes in an outgoing queue
 - `send_subscribe(session_id, after_sequence=0)` enqueues a *subscribe-only*
-  frame (RFC-MACP-0006-A1) — see [Session subscription + replay](#session-subscription--replay)
+  frame (RFC-MACP-0006-A1) — see [Session subscription + replay](#session-subscription-replay)
 - A background thread reads from the gRPC stream and puts responses in an incoming queue
 - `read()` and `responses()` pull from the incoming queue
 - `close()` signals the background thread to stop
@@ -109,31 +109,72 @@ session.propose("p1", "option-a")
 response = stream.read(timeout=5.0)
 ```
 
-## Server-streaming: WatchModeRegistry
+## Server-streaming watchers (`macp_sdk.watchers`)
+
+The SDK wraps every server-streaming RPC in a typed watcher. Each watcher
+exposes the same shape — `changes()` (iterator), `watch(handler)` (blocking
+loop), and `next_change()` (pop one) — so they compose uniformly.
+
+### `ModeRegistryWatcher`
 
 Monitor mode registry changes in real time:
 
 ```python
-for event in client.watch_mode_registry(timeout=60.0):
-    print(f"Registry changed: {event}")
+from macp_sdk import ModeRegistryWatcher
+
+for event in ModeRegistryWatcher(client).changes():
+    print("registry changed", event)
 ```
 
-This is useful for dynamic orchestrators that need to adapt when new modes are registered or existing ones are removed.
+### `RootsWatcher`
 
-## Server-streaming: WatchRoots
+Watches coordination root changes. Currently idles — the runtime does not
+populate roots yet.
 
-Monitor coordination root changes:
+### `PolicyWatcher`
+
+Observe governance policy registrations (`list_policies` + live diffs):
 
 ```python
-for event in client.watch_roots(timeout=60.0):
-    print(f"Roots changed: {event}")
+from macp_sdk import PolicyWatcher
+
+def on_policy_change(change):
+    for desc in change.descriptors:
+        print(desc.policy_id, desc.version)
+
+PolicyWatcher(client).watch(on_policy_change)
+```
+
+### `SessionLifecycleWatcher`
+
+Observe `CREATED` / `RESOLVED` / `EXPIRED` events across every session the
+auth identity can see — ideal for supervisor / dashboard agents. See
+[Session Discovery](session-discovery.md) for the full walkthrough.
+
+```python
+from macp_sdk import SessionLifecycleWatcher
+
+for event in SessionLifecycleWatcher(client).changes():
+    print(event.event_type, event.session.session_id)
+    if event.is_terminal:
+        # session won't emit more events
+        ...
+```
+
+### `SignalWatcher`
+
+Ambient-plane messages (non-binding, no session). Empty envelopes on the
+wire are filtered automatically.
+
+```python
+from macp_sdk import SignalWatcher
+
+for envelope in SignalWatcher(client).signals():
+    print(envelope.message_type, envelope.sender)
 ```
 
 ## Known limitations
 
-- **Single session per stream**: Each stream is scoped to one session. Open multiple streams for multiple sessions.
-- **Background thread**: `MacpStream` uses a daemon thread. Ensure you call `close()` for clean shutdown, or use the client as a context manager.
-
-> Late attach *is* supported since SDK 0.2.3 / `macp-proto 0.1.2` via
-> the subscribe frame described above. Earlier versions only saw
-> envelopes accepted after the stream was opened.
+- **Single session per stream** — each `MacpStream` is scoped to one session. Open multiple streams for multiple sessions, or use `SessionLifecycleWatcher` for cross-session observability.
+- **Background thread** — `MacpStream` uses a daemon thread. Call `close()` for clean shutdown, or use the client as a context manager.
+- **Roots are not populated** — `ListRoots` returns an empty list and `RootsWatcher` idles until the runtime implements root projection.

@@ -6,6 +6,8 @@
 
 Threshold-based approval or rejection. N-of-M participants must approve for the action to pass. Designed for governance, compliance gates, and multi-party authorization.
 
+> **Runtime semantics:** threshold resolution (including policy overrides), abstention handling, and commitment readiness are defined in [Runtime Modes § Quorum Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#quorum-mode). Bound a [policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md) to override `required_approvals` at the runtime. This page covers the SDK API.
+
 ## When to use
 
 Use Quorum mode when an action requires approval from a minimum number of parties:
@@ -44,24 +46,9 @@ Commitment → RESOLVED
     - Approvals ≥ `required_approvals` (threshold reached), OR
     - Remaining possible approvals cannot reach threshold (mathematically unreachable)
 
-## Authorization rules
+## Authorization & termination
 
-| Message | Who can send |
-|---------|-------------|
-| ApprovalRequest | Session initiator (coordinator) |
-| Approve | Any declared participant |
-| Reject | Any declared participant |
-| Abstain | Any declared participant |
-| Commitment | Session initiator / authorized coordinator |
-
-## Terminal conditions
-
-A session becomes eligible for Commitment when:
-
-1. **Threshold reached:** `approval_count >= required_approvals`
-2. **Threshold unreachable:** `approval_count + remaining_voters < required_approvals`
-
-The orchestrator then commits with the appropriate action (approved or rejected).
+Per-message authorization and the runtime's commitment-readiness check (threshold reached *or* mathematically unreachable) are defined in [Runtime Modes § Quorum Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#quorum-mode). Use `proj.commitment_ready(total_eligible)` to mirror that check on the SDK side before calling `commit()`.
 
 ## Session helper
 

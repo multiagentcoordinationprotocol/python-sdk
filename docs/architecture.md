@@ -1,5 +1,7 @@
 # Architecture
 
+This page describes the SDK's internal structure. For the runtime side of the stack (kernel layers, durability, concurrency, request flow), see [Runtime Architecture](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md).
+
 ## Three-layer model
 
 ```
@@ -35,9 +37,9 @@ This rule matches how `DecisionSession.vote`, `ProposalSession.propose`, `TaskSe
 
 ```
 macp_sdk/
-├── client.py          MacpClient (sync gRPC) + MacpStream (bidirectional streaming)
-├── auth.py            AuthConfig — bearer tokens and dev agent headers
-├── base_session.py    BaseSession ABC — shared start/commit/cancel/metadata
+├── client.py          MacpClient (sync gRPC) + MacpStream (bidirectional streaming, send_subscribe replay)
+├── auth.py            AuthConfig — bearer-token auth (for_bearer / for_dev_agent), expected_sender guardrail
+├── base_session.py    BaseSession ABC — shared start/commit/cancel/metadata/open_stream
 ├── base_projection.py BaseProjection ABC — shared transcript/commitment tracking
 ├── decision.py        DecisionSession — propose, evaluate, object, vote
 ├── proposal.py        ProposalSession + ProposalProjection
@@ -46,11 +48,46 @@ macp_sdk/
 ├── quorum.py          QuorumSession + QuorumProjection
 ├── projections.py     DecisionProjection
 ├── envelope.py        Low-level envelope/payload builders
-├── errors.py          Exception hierarchy
+├── watchers.py        Server-stream wrappers: ModeRegistryWatcher, RootsWatcher,
+│                      PolicyWatcher, SessionLifecycleWatcher, SignalWatcher
+├── policy.py          Typed policy builders for all 5 modes (build_decision_policy, …)
+├── validation.py      Client-side input validation helpers
+├── proto_registry.py  Proto registry helper for extension modes
+├── errors.py          Exception hierarchy (MacpSdkError → MacpAckError, …)
 ├── constants.py       Mode URIs and version strings
 ├── retry.py           RetryPolicy + retry_send helper
-└── _logging.py        SDK logger configuration
+├── _logging.py        SDK logger configuration
+└── agent/             High-level agent framework
+    ├── participant.py     Participant event loop, handler registration, InitiatorConfig
+    ├── dispatcher.py      Dispatcher — message-type and phase-change dispatch
+    ├── strategies.py      EvaluationStrategy / VotingStrategy / CommitmentStrategy protocols
+    ├── runner.py          from_bootstrap() — factory from bootstrap JSON (+ cancel-callback wiring)
+    ├── cancel_callback.py CancelCallbackServer — stdlib HTTP server (RFC-0001 §7.2 Option A)
+    ├── transports.py      GrpcTransportAdapter (auto send_subscribe) + TransportAdapter protocol
+    └── types.py           SessionInfo, IncomingMessage, HandlerContext, TerminalResult
 ```
+
+## Agent framework (`macp_sdk.agent`)
+
+On top of the low-level client/session layer, the SDK ships a high-level agent
+framework that is the recommended way to write long-running participant agents.
+See [Agent Framework](guides/agent-framework.md) for the full guide.
+
+```
+bootstrap.json → from_bootstrap() → Participant
+                                      │
+                                      ├── .on("Proposal", handler)          ← message-type dispatch
+                                      ├── .on_phase_change("Voting", h)     ← projection phase hooks
+                                      ├── .on_terminal(h)                   ← Committed / Cancelled / …
+                                      ├── .run()                            ← blocking event loop
+                                      │
+                                      └── cancel_callback HTTP endpoint     ← runtime / orchestrator shutdown
+```
+
+The framework wires up auth, transport (with automatic `send_subscribe` replay),
+the mode-specific projection, dispatcher, and cancel-callback — callers only
+supply handlers. Composable strategies (`VotingStrategy`, `EvaluationStrategy`,
+`CommitmentStrategy`) let you slot in policy without rewriting the event loop.
 
 ## BaseSession / BaseProjection pattern
 
@@ -121,6 +158,8 @@ Projections only see envelopes **sent through this session helper instance**. If
 
 All communication is **client-initiated**. The runtime never calls back into the SDK. If you need runtime-driven behavior, run a Python agent as a separate process that polls or streams from the runtime.
 
+For how the runtime processes each RPC internally, see [Runtime Architecture § Request flow](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md#request-flow-send-rpc).
+
 ## Data flow for a typical session
 
 ```
@@ -136,7 +175,7 @@ Steps 3–5 repeat for as many messages as the session requires. The projection 
 
 ## Extension modes
 
-The runtime supports dynamic extension modes via `RegisterExtMode`, `UnregisterExtMode`, and `PromoteMode` RPCs. Extensions use a passthrough handler that validates declared message types:
+The runtime supports dynamic extension modes via `RegisterExtMode`, `UnregisterExtMode`, and `PromoteMode` RPCs — semantics, lifecycle, and promotion rules are defined in [Runtime Modes § Dynamic Extension Modes](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#dynamic-extension-modes). The SDK exposes them through these client methods:
 
 ```python
 # Register a custom mode

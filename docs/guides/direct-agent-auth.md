@@ -7,6 +7,8 @@ RFC-MACP-0004 §4 ("`sender` MUST be derived from authenticated identity")
 and the architectural invariants spelled out in
 `ui-console/plans/direct-agent-auth.md`.
 
+For the runtime side of identity binding (token validators, sender derivation, dev-mode fallback), see [Runtime API § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#authentication) and [Runtime Deployment § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/deployment.md#authentication).
+
 This guide shows the initiator and non-initiator patterns.
 
 ## Bootstrap from the orchestrator
@@ -124,7 +126,12 @@ unless a policy's `commitment.authority` delegates it. Two patterns:
 
 - **Option A (default):** the initiator agent exposes a local HTTP
   `POST /agent/cancel` endpoint. The orchestrator calls it, and the agent
-  invokes `session.cancel(reason=...)` over its own gRPC channel.
+  invokes `session.cancel(reason=...)` over its own gRPC channel. Since
+  SDK 0.3.0 this is **wired automatically by `from_bootstrap`** — see
+  [Agent Framework → Cancel callback](agent-framework.md#cancel-callback).
+  If you hand-roll the agent outside the framework you can still stand up
+  the endpoint yourself with
+  `macp_sdk.agent.start_cancel_callback_server(...)`.
 - **Option B (opt-in):** the scenario's policy designates the orchestrator
   as a commitment authority; it can then call `CancelSession` directly.
 

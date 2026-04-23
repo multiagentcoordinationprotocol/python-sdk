@@ -6,6 +6,8 @@
 
 Structured decision making with proposals, evaluations, objections, votes, and terminal commitment.
 
+> **Runtime semantics:** phase progression, value normalization, and commitment-readiness rules are defined in [Runtime Modes § Decision Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#decision-mode). Per-mode authorization and termination rules live in the protocol spec — see [protocol modes](https://github.com/multiagentcoordinationprotocol/multiagentcoordinationprotocol/blob/main/docs/modes.md). This page covers the SDK API.
+
 ## When to use
 
 Use Decision mode when multiple agents need to converge on a single outcome from a set of options. Common scenarios:
@@ -41,25 +43,9 @@ Commitment → RESOLVED
 
 The phases are advisory — the runtime does not strictly enforce phase ordering beyond basic structural rules. However, the projection tracks phase transitions for your orchestrator logic.
 
-## Authorization rules
+## Authorization & termination
 
-| Message | Who can send |
-|---------|-------------|
-| SessionStart | Any authenticated agent with `can_start_sessions` |
-| Proposal | Session initiator or any declared participant |
-| Evaluation | Any declared participant |
-| Objection | Any declared participant |
-| Vote | Any declared participant (one vote per participant per proposal) |
-| Commitment | Session initiator / authorized coordinator |
-
-## Terminal conditions
-
-A session becomes eligible for Commitment when:
-
-1. At least one proposal exists, AND
-2. The orchestrator's policy logic decides to commit (e.g., majority reached)
-
-Only an authorized sender can emit the Commitment. The runtime validates that at least one proposal was submitted.
+Per-message authorization (who can send Proposal/Evaluation/Vote/Commitment) and the runtime's commitment-readiness checks are defined in [Runtime Modes § Decision Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#decision-mode). Additional governance rules — vote quorum, confidence thresholds, veto — come from policies bound at SessionStart; see [Runtime Policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md).
 
 ## Session helper
 

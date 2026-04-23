@@ -6,6 +6,8 @@
 
 Offer/counteroffer negotiation with peer refinement. Designed for bilateral or multilateral negotiations where parties iteratively refine terms until convergence or terminal rejection.
 
+> **Runtime semantics:** convergence detection, counter-proposal supersession, and terminal-rejection handling are defined in [Runtime Modes § Proposal Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#proposal-mode). This page covers the SDK API.
+
 ## When to use
 
 Use Proposal mode when agents need to negotiate terms through iterative offers and counteroffers:
@@ -45,23 +47,9 @@ Commitment → RESOLVED
 - **Withdraw** removes a proposal from consideration
 - Convergence occurs when all participants accept the **same live proposal**
 
-## Authorization rules
+## Authorization & termination
 
-| Message | Who can send |
-|---------|-------------|
-| Proposal | Any declared participant |
-| CounterProposal | Any declared participant (must reference existing proposal) |
-| Accept | Any declared participant |
-| Reject | Any declared participant |
-| Withdraw | Any declared participant (typically the original proposer) |
-| Commitment | Session initiator / authorized coordinator |
-
-## Terminal conditions
-
-A session becomes eligible for Commitment when:
-
-1. **Convergence:** All required participants accept the same live (non-withdrawn) proposal, OR
-2. **Terminal rejection:** A participant issues a `terminal=True` rejection with authority to terminate
+Per-message authorization, the configurable acceptance criterion (`all_parties` / `counterparty` / `initiator`), and counter-proposal round limits are defined in [Runtime Modes § Proposal Mode](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md#proposal-mode). Override the criterion via a bound policy — see [Runtime Policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md).
 
 ## Session helper
 

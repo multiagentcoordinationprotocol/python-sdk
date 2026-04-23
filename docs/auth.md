@@ -2,6 +2,8 @@
 
 All authenticated operations require an `AuthConfig`. The SDK supports two authentication methods, matching the runtime's security model.
 
+For the runtime side of authentication (token issuance, validators, sender derivation), see [Runtime API § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#authentication). The general security guarantees (transport, isolation, replay protection, rate limiting, audit logging) are summarised in [Security](security.md).
+
 ## Development: dev-agent bearer auth
 
 ```python
@@ -58,36 +60,35 @@ and the runtime remains the final authority.
 
 ### Token configuration (runtime side)
 
-The runtime accepts token configuration via `MACP_AUTH_TOKENS_JSON` or `MACP_AUTH_TOKENS_FILE`:
+Token issuance, scope (`allowed_modes`, `can_start_sessions`, `max_open_sessions`, `can_manage_mode_registry`, `is_observer`), and the `MACP_AUTH_TOKENS_JSON` / `MACP_AUTH_TOKENS_FILE` format live in the runtime docs — see [Runtime Deployment § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/deployment.md#authentication) and [Runtime API § Authentication](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md#authentication).
 
-```json
-{
-  "tokens": [
-    {
-      "token": "tok-coordinator-secret",
-      "sender": "coordinator",
-      "allowed_modes": ["macp.mode.decision.v1", "macp.mode.quorum.v1"],
-      "can_start_sessions": true,
-      "max_open_sessions": 25,
-      "can_manage_mode_registry": true
-    },
-    {
-      "token": "tok-alice-secret",
-      "sender": "alice",
-      "can_start_sessions": false,
-      "max_open_sessions": 10
-    }
-  ]
-}
+## JWT tokens
+
+The runtime's resolver chain (JWT bearer → static bearer → dev-mode fallback) treats JWTs and opaque static tokens interchangeably at the wire level — both travel in `Authorization: Bearer`. The SDK does not need to parse or validate the JWT; just pass it to `AuthConfig.for_bearer`:
+
+```python
+auth = AuthConfig.for_bearer(jwt, expected_sender="agent://analyst")
 ```
 
-| Field | Description |
-|-------|-------------|
-| `sender` | Identity assigned to this token |
-| `allowed_modes` | Restrict to specific modes (omit for all) |
-| `can_start_sessions` | Whether this token can initiate sessions |
-| `max_open_sessions` | Concurrent OPEN session limit |
-| `can_manage_mode_registry` | Whether this token can register/unregister modes |
+The runtime's JWT resolver (active when `MACP_AUTH_ISSUER` is set) verifies signature, issuer, audience, and expiration against a JWKS, derives `sender` from the `sub` claim, and reads capability flags from the optional `macp_scopes` claim (`allowed_modes`, `can_start_sessions`, `max_open_sessions`, `can_manage_mode_registry`, `is_observer`). Set `expected_sender` to the value you expect `sub` to produce so `MacpIdentityMismatchError` surfaces client-side before the runtime NACKs.
+
+Supported algorithms, JWKS configuration (`MACP_AUTH_JWKS_JSON` inline or `MACP_AUTH_JWKS_URL` fetched + cached), and the `macp_scopes` claim layout are documented in the runtime's [JWT mode guide](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/getting-started.md#jwt-mode).
+
+## Observer identities
+
+Non-participant agents (audit agents, dashboards, read-only observers) authenticate with a normal bearer credential whose runtime-side identity carries `is_observer: true`. On the SDK side, observers open a stream and call [`send_subscribe(session_id, after_sequence=0)`](guides/streaming.md#session-subscription-replay) to replay accepted history and then consume live envelopes — no membership in the session's `participants` list is required.
+
+```python
+auth = AuthConfig.for_bearer(observer_token, expected_sender="agent://auditor")
+client = MacpClient(target="runtime:50051", auth=auth)
+
+stream = client.open_stream()
+stream.send_subscribe(session_id)          # full replay + live tail
+for envelope in stream.responses(timeout=5.0):
+    ...
+```
+
+Observers still cannot `Send` into a session unless the mode's authority rules allow it — passive observation does not bypass mode authority. See the runtime's [SDK guide § Observer identities](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md#observer-identities) for server-side provisioning.
 
 ## Sender identity
 

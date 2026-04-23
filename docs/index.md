@@ -15,7 +15,10 @@ This separation keeps coordination explicit, bounded, auditable, and replayable.
 - Maintains **in-process projections** for local state tracking (because `GetSession` returns metadata only)
 - Offers **envelope builders** for low-level message construction
 - Includes **retry helpers** with exponential backoff
-- Supports **bidirectional streaming** and registry/root watching
+- Supports **bidirectional streaming** with mid-session replay (`send_subscribe`)
+- Exposes **session discovery** — `list_sessions()` + `SessionLifecycleWatcher`
+- Ships an **agent framework** — `Participant`, `from_bootstrap`, handler dispatch, strategies, and cancel-callback wiring
+- Provides **policy registration** and `PolicyWatcher` for governance updates
 
 ## What this SDK does NOT do
 
@@ -90,9 +93,12 @@ if winner and not session.decision_projection.has_blocking_objection(winner):
 | [Core Protocol](protocol.md) | Envelopes, sessions, lifecycle, errors, discovery |
 | [Architecture](architecture.md) | Module map, BaseSession pattern, projections, data flow |
 | [Determinism & Replay](determinism.md) | Determinism classes, version binding, replay testing |
-| [Security](security.md) | Auth methods, authorization, isolation, rate limiting |
+| [Security](security.md) | TLS defaults, `expected_sender` guardrail, retry on rate limits |
 | [Error Handling](guides/error-handling.md) | Exception hierarchy, retry patterns, graceful degradation |
-| [Streaming](guides/streaming.md) | MacpStream, WatchModeRegistry, WatchRoots |
+| [Streaming](guides/streaming.md) | `MacpStream`, `send_subscribe` replay, registry/root/policy/signal watchers |
+| [Session Discovery](guides/session-discovery.md) | `list_sessions`, `SessionLifecycleWatcher`, supervisor patterns |
+| [Agent Framework](guides/agent-framework.md) | `Participant`, `from_bootstrap`, dispatcher, strategies, cancel-callback |
+| [Direct Agent Auth](guides/direct-agent-auth.md) | Initiator + non-initiator bootstrap, `expected_sender` guardrail |
 | [Building Orchestrators](guides/building-orchestrators.md) | Policy patterns, multi-stage pipelines, event-driven |
 | [Auth](auth.md) | AuthConfig setup for dev and production |
 | [API Reference](api/index.md) | Auto-generated class and function docs |
@@ -109,3 +115,16 @@ For local development:
 export MACP_ALLOW_INSECURE=1
 cargo run
 ```
+
+## Related documentation
+
+This SDK is the gRPC client; the runtime is the source of truth for protocol semantics, RPC contracts, deployment, and auth. Rather than duplicate runtime material, we link to it:
+
+- [Runtime — Getting Started](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/getting-started.md) — build the runtime, static/JWT auth configuration, first session
+- [Runtime — API Reference](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/API.md) — all 22 gRPC RPCs with request/response fields and capability flags
+- [Runtime — Architecture](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/architecture.md) — layer structure, request flow, durability model
+- [Runtime — Modes](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/modes.md) — per-mode state machine implementation details
+- [Runtime — Policy](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/policy.md) — policy framework, rule schemas, evaluator internals
+- [Runtime — Deployment](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/deployment.md) — production config, storage backends, TLS, crash recovery
+- [Runtime — SDK Developer Guide](https://github.com/multiagentcoordinationprotocol/runtime/blob/main/docs/sdk-guide.md) — envelope construction, streaming, passive subscribe, retries
+- [Protocol Specification](https://www.multiagentcoordinationprotocol.io/docs) — two-plane model, session lifecycle, determinism, security, transport bindings
