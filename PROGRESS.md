@@ -765,3 +765,6 @@ only in the two newly-added blocks, confirming both required locations now carry
   eligible ballot caster, so it is 6; (4) the conformance corpus has zero fixtures for
   `Objection`, `Withdraw`, `TaskUpdate` (spec repo issue #81), so `has_blocking_objection`
   has no cross-implementation oracle.
+
+- pushed docs/pin-raise-before-mutate-invariant 123e922 (2026-09-06) — /reconcile follow-ups: raise-before-mutate contract on the abstract docstring + tests/unit/test_projection_rollback_invariant.py. Docs+tests only, no behaviour change. Ship verification: Opus, 2 rounds (round 1 GAPS x3, round 2 PASS).
+- PR #59 opened: https://github.com/multiagentcoordinationprotocol/macp-sdk-python/pull/59
