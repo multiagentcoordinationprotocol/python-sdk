@@ -207,7 +207,7 @@ class BaseProjection(ABC):
         #
         # What this does NOT cover: self.phase (assigned directly on
         # BaseProjection by subclasses — see projections.py:84,
-        # task.py:103, handoff.py:71) and any subclass-owned collection
+        # task.py:102, handoff.py:70) and any subclass-owned collection
         # (evaluations, objections, accepts, rejections, updates,
         # completions, failures) are never rolled back, because this
         # method has no way to know what a subclass mutated. That is safe
@@ -219,7 +219,7 @@ class BaseProjection(ABC):
         # mutates subclass state and then raises. This is a
         # raise-before-mutate invariant that _apply_mode_message
         # implementations must preserve. BaseProjection is exported for
-        # third-party subclassing (see __init__.py:143), and upcoming
+        # third-party subclassing (see __init__.py:151), and upcoming
         # first-wins/anomaly-tracking logic must keep fallible work ahead
         # of mutations to keep this guarantee honest.
         #
@@ -242,7 +242,7 @@ class BaseProjection(ABC):
             # above is the only mutation of transcript between there and
             # here, so transcript[-1] is the entry this call just
             # appended. But BaseProjection is a public ABC (exported at
-            # __init__.py:143) that third parties may subclass, so guard
+            # __init__.py:151) that third parties may subclass, so guard
             # with an identity check rather than popping unconditionally.
             # The two ways the guard could see something else at [-1] are:
             #   - a subclass's _apply_mode_message appending to
@@ -267,7 +267,45 @@ class BaseProjection(ABC):
 
     @abstractmethod
     def _apply_mode_message(self, envelope: envelope_pb2.Envelope) -> None:
-        """Handle a mode-specific (non-Commitment) envelope."""
+        """Handle a mode-specific (non-Commitment) envelope.
+
+        **Implementations MUST do all fallible work before any mutation**
+        ("raise-before-mutate"). Parse the payload (``ParseFromString``, the
+        one operation that realistically raises here), validate it, and
+        decide what to do — *then* assign ``self.phase`` or touch any
+        subclass collection. Never mutate and then run something that can
+        raise.
+
+        This is a real contract, not style advice, and it is what makes
+        ``apply_envelope``'s rollback sufficient. That rollback restores
+        ``transcript`` and the ``message_id`` dedup set only — it cannot
+        restore subclass state, because the base class has no way to know
+        what a subclass mutated (a slotted subclass has no ``__dict__`` to
+        snapshot, and deep-copying every projection per envelope would be a
+        real per-message cost). An implementation that mutates and then
+        raises therefore leaves *its own* state half-applied while
+        ``apply_envelope`` reports a clean rollback and invites the caller
+        to retry — a partial apply the base class cannot detect or undo.
+
+        Every implementation in this SDK honors this today (see the
+        per-branch parse-then-mutate ordering in ``projections.py``,
+        ``quorum.py``, ``task.py``, ``handoff.py``, and ``proposal.py``).
+        Two branches come close to the line: ``handoff.py``'s
+        ``HandoffAccept`` writes the record before reading
+        ``getattr(p, "implicit", False)``, and ``proposal.py``'s ``Reject``
+        appends before reading ``p.terminal`` and ``self.proposals.get(...)``.
+        Both are safe only because a defaulted ``getattr``, a protobuf field
+        read, and ``dict.get`` cannot raise — not because the ordering there
+        is exemplary.
+
+        ``tests/unit/test_projection_rollback_invariant.py`` pins the
+        ordering by feeding each branch a payload that cannot parse and
+        asserting no derived state moved. Note what that does *not* reach: a
+        branch that mutates and then does something else fallible (a raising
+        property, an ``int()``, a strict lookup) is not caught, because a
+        malformed payload never gets that far. The contract is broader than
+        the test — hence stating it here.
+        """
 
     def _record_anomaly(
         self,

@@ -67,8 +67,10 @@ existing convention. Reconciled via `/reconcile`.
   safe only because every current subclass performs its single fallible operation
   (`ParseFromString`) strictly *before* any mutation, and its record types are plain
   slotted dataclasses whose construction cannot raise. That invariant is what makes the
-  narrow rollback sufficient — it is not a property the base class enforces, and
-  `BaseProjection` is publicly exported (`__init__.py:143`) for third parties to subclass.
+  narrow rollback sufficient — it is not a property the base class *enforces* (it cannot:
+  a slotted subclass has no `__dict__` to snapshot, and deep-copying every projection per
+  envelope is a real per-message cost), and `BaseProjection` is publicly exported
+  (`__init__.py:151`) for third parties to subclass.
   Phases 3–4 add logic inside `_apply_mode_message` and must preserve raise-before-mutate.
   (An earlier revision of this entry claimed the call becomes "as if it never happened."
   That overstated what the code delivers; corrected here after the Phase 1 re-verification
@@ -84,4 +86,30 @@ existing convention. Reconciled via `/reconcile`.
   never reaches — so conforming callers see no behaviour change at all. Reverting is deleting
   a `try`/`except`/`raise`. The risk of the change is that rollback masks the original
   exception; a test asserts the exception propagates unchanged.
-- **Status:** UNCONFIRMED
+- **Reconciled 2026-09-06 (Fable):** CONFIRM as-is. The invariant was re-verified per
+  branch against the *current* tree, not the tree it was written against — the first-wins
+  logic from #47/#48 landed inside these very methods afterwards and did preserve
+  raise-before-mutate (`projections.py:100-127` parses at :102, and every mutation --
+  `:112`'s anomaly append, `:121`, `:127` -- follows it; `quorum.py:102`'s `setdefault`
+  precedes the duplicate check but nothing fallible follows it). Two prose defects in this
+  entry were corrected: `__init__.py:143` → `:151`, and `task.py:103`/`handoff.py:71` →
+  `:102`/`:70` in `base_projection.py`'s rollback comment.
+  One claim was **withdrawn as overstated** — that the docstring advertises a rollback the
+  base class does not deliver. It does not; `base_projection.py:145-151` states the narrow
+  scope explicitly, and docstring and code agree.
+- **Follow-ups applied in the same pass (additive, no contract change):** the
+  raise-before-mutate requirement now lives on the `_apply_mode_message` abstract docstring
+  — the one place a subclasser is guaranteed to look — instead of only in an internal
+  comment; and `tests/unit/test_projection_rollback_invariant.py` pins the
+  parse-then-mutate ordering across all 23 dispatch arms plus seeded Decision/Quorum
+  cases. That is narrower than the full contract: it feeds a payload that cannot parse,
+  so it catches a mutation moved ahead of `ParseFromString`, not one moved ahead of some
+  *other* fallible call. The docstring states the broader rule. Both guards were
+  mutation-tested: moving a mutation ahead of the parse fails `decision-Vote`, and
+  dropping a row from the branch table fails the exhaustiveness check, which discovers
+  SDK projections rather than listing them so a new projection cannot arrive unpinned.
+- **Known gap, accepted:** `_record_anomaly` appends to `self.anomalies` then logs. An
+  exception raised by a user-installed logging *filter* on the `macp_sdk` logger would
+  propagate and leave the anomaly record behind (base-class state, not rolled back).
+  Unreachable without a raising filter; not worth code.
+- **Status:** CONFIRMED (2026-09-06)
