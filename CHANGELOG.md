@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/multiagentcoordinationprotocol/macp-sdk-python/compare/v0.9.0...v0.9.1) (2026-09-06)
+
+
+### Documentation
+
+* pin the raise-before-mutate invariant projections depend on ([#59](https://github.com/multiagentcoordinationprotocol/macp-sdk-python/issues/59)) ([0e1b4a4](https://github.com/multiagentcoordinationprotocol/macp-sdk-python/commit/0e1b4a41e514a359c0169ba498f0a0dbb7f85d9c))
+
 ## [0.9.0](https://github.com/multiagentcoordinationprotocol/macp-sdk-python/compare/v0.8.0...v0.9.0) (2026-09-01)
 
 
